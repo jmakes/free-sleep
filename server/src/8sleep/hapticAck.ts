@@ -4,10 +4,24 @@ import { Side } from '../db/schedulesSchema.js';
 import { executeFunction } from './deviceApi.js';
 import { wait } from './promises.js';
 
-/** ~2 pulses per second (mouse double-click pacing) */
-const PULSE_ON_MS = 160;
-const PULSE_GAP_MS = 340;
-const HAPTIC_INTENSITY = 50;
+/**
+ * ~2 pulses/sec (mouse double-click pacing).
+ * Keep ON long enough for the motor to engage; CLEAR too early feels like one blip.
+ */
+const PULSE_ON_MS = 320;
+const PULSE_GAP_MS = 180;
+const HAPTIC_INTENSITY = 60;
+
+async function fireAlarmPulse(command: 'ALARM_LEFT' | 'ALARM_RIGHT', pattern: 'rise' | 'double', durationSec: number) {
+  const payload = {
+    pl: HAPTIC_INTENSITY,
+    du: durationSec,
+    pi: pattern,
+    tt: Math.floor(Date.now() / 1000),
+  };
+  const hexPayload = cbor.encode(payload).toString('hex');
+  await executeFunction(command, hexPayload);
+}
 
 /**
  * Side-local vibration acknowledgment: N short pulses on the tapped side.
@@ -20,23 +34,25 @@ export async function playHapticAck(side: Side, pulses: number): Promise<void> {
   const command = side === 'left' ? 'ALARM_LEFT' : 'ALARM_RIGHT';
 
   try {
+    // Firmware has a built-in double pattern — more reliable than two short rises
+    if (count === 2) {
+      await fireAlarmPulse(command, 'double', 2);
+      await wait(700);
+      await executeFunction('ALARM_CLEAR', 'empty');
+      logger.info(`Haptic ack complete: ${side} × 2 (firmware double pattern)`);
+      return;
+    }
+
     for (let index = 0; index < count; index++) {
-      const payload = {
-        pl: HAPTIC_INTENSITY,
-        // Firmware uses seconds; keep short and clear early for a click-like feel
-        du: 1,
-        pi: 'rise',
-        tt: Math.floor(Date.now() / 1000),
-      };
-      const hexPayload = cbor.encode(payload).toString('hex');
-      await executeFunction(command, hexPayload);
+      await fireAlarmPulse(command, 'rise', 1);
       await wait(PULSE_ON_MS);
       await executeFunction('ALARM_CLEAR', 'empty');
+      // Brief settle so the next pulse is a distinct click
       if (index < count - 1) {
         await wait(PULSE_GAP_MS);
       }
     }
-    logger.debug(`Haptic ack complete: ${side} × ${count}`);
+    logger.info(`Haptic ack complete: ${side} × ${count}`);
   } catch (error) {
     logger.warn(`Haptic ack failed for ${side}: ${error instanceof Error ? error.message : String(error)}`);
   }

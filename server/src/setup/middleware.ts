@@ -93,14 +93,21 @@ export default function (app: Express) {
     next();
   });
 
-  // Parse JSON bodies. Also accept text/plain JSON (some clients / proxies).
+  // Parse JSON bodies.
+  // IMPORTANT: some LAN proxies / clients forward a body (Content-Length > 0)
+  // but strip Content-Type. If we require application/json, express.json()
+  // skips those requests entirely → rawBodyBytes=0 and req.body=undefined
+  // (this broke power on: content-length=47, content-type=(none)).
   app.use(express.json({
     type: (req) => {
-      const contentType = req.headers['content-type'] || '';
+      const contentType = (req.headers['content-type'] || '').toLowerCase();
+      if (!contentType) {
+        return true; // try JSON when Content-Type is missing
+      }
       return (
-        contentType.includes('application/json') ||
-        contentType.includes('text/json') ||
-        contentType.includes('text/plain')
+        contentType.includes('json') ||
+        contentType.includes('text/plain') ||
+        contentType.includes('urlencoded')
       );
     },
     verify: (req, _res, buf) => {

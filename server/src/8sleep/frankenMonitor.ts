@@ -80,6 +80,9 @@ export class FrankenMonitor {
         const previous = this.deviceStatus?.[side]?.taps?.[gesture];
         const next = nextDeviceStatus[side]?.taps?.[gesture];
         if (this.isCounterIncrease(previous, next)) {
+          logger.info(
+            `Tap counter increase: ${side}.${gesture} ${previous} → ${next}`
+          );
           await this.processGesture(side, gesture, nextDeviceStatus);
         }
       }
