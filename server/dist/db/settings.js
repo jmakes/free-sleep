@@ -18,21 +18,24 @@ const defaultSideSettings = {
         }
     },
     taps: {
-        doubleTap: {
+        // Defaults match common bed-side preferences:
+        // 1× cool, 2× warm, 3× power off, 4× lock current temp into schedule (all days)
+        singleTap: {
             type: 'temperature',
             change: 'decrement',
             amount: 1,
         },
-        tripleTap: {
+        doubleTap: {
             type: 'temperature',
             change: 'increment',
             amount: 1,
         },
+        tripleTap: {
+            type: 'power',
+            action: 'off',
+        },
         quadTap: {
-            type: 'alarm',
-            behavior: 'dismiss',
-            snoozeDuration: 60,
-            inactiveAlarmBehavior: 'power',
+            type: 'scheduleApply',
         },
     }
 };
@@ -57,8 +60,16 @@ const defaultData = {
 const file = new JSONFile(`${config.lowDbFolder}settingsDB.json`);
 const settingsDB = new Low(file, defaultData);
 await settingsDB.read();
+// One-time upgrade: older installs only had double/triple/quad. Apply the new
+// single–quad defaults once so mappings match the documented product behavior.
+const legacyTapMap = Boolean(settingsDB.data?.left?.taps) &&
+    !Object.prototype.hasOwnProperty.call(settingsDB.data.left.taps, 'singleTap');
 // Allows us to add default values to the settings if users have existing settingsDB.json data
 settingsDB.data = _.merge({}, defaultData, settingsDB.data);
+if (legacyTapMap) {
+    settingsDB.data.left.taps = _.cloneDeep(defaultSideSettings.taps);
+    settingsDB.data.right.taps = _.cloneDeep(defaultSideSettings.taps);
+}
 await settingsDB.write();
 export default settingsDB;
 //# sourceMappingURL=settings.js.map

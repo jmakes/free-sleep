@@ -5,7 +5,8 @@ import logger from '../../logger.js';
 const router = express.Router();
 
 import settingsDB from '../../db/settings.js';
-import { SettingsSchema } from '../../db/settingsSchema.js';
+import { GestureSchema, SettingsSchema } from '../../db/settingsSchema.js';
+
 
 router.get('/settings', async (req: Request, res: Response) => {
   await settingsDB.read();
@@ -26,6 +27,24 @@ router.post('/settings', async (req: Request, res: Response) => {
   }
   delete body.id;
   await settingsDB.read();
+
+  // Tap configs are discriminated unions — replace whole gesture objects instead of
+  // deep-merging (which would leave stale fields when switching action types).
+  for (const side of ['left', 'right'] as const) {
+    const tapsUpdate = body?.[side]?.taps;
+    if (tapsUpdate) {
+      for (const gesture of GestureSchema.options) {
+        if (tapsUpdate[gesture] !== undefined) {
+          settingsDB.data[side].taps[gesture] = tapsUpdate[gesture];
+        }
+      }
+      delete body[side].taps;
+      if (body[side] && Object.keys(body[side]).length === 0) {
+        delete body[side];
+      }
+    }
+  }
+
   _.merge(settingsDB.data, body);
   await settingsDB.write();
   res.status(200).json(settingsDB.data);

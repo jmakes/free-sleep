@@ -20,6 +20,7 @@ const RawDeviceData = z.object({
     waterLevel: z.string().regex(/^(true|false)$/, { message: 'waterLevel must be "true" or "false"' }),
     priming: z.string().regex(/^(true|false)$/, { message: 'priming must be "true" or "false"' }),
     settings: z.string(),
+    singleTap: z.string().optional(),
     doubleTap: z.string().optional(),
     tripleTap: z.string().optional(),
     quadTap: z.string().optional(),
@@ -179,9 +180,7 @@ export async function loadDeviceStatus(response, getGestures) {
     };
     if (getGestures) {
         try {
-            // @ts-expect-error - fields get populated below
             deviceStatus.left.taps = {};
-            // @ts-expect-error - fields get populated below
             deviceStatus.right.taps = {};
             for (const field of GestureSchema.options) {
                 const data = rawDeviceData[field];

@@ -6,19 +6,22 @@ import { wait } from './promises.js';
 import { DeviceStatus, Version } from '../routes/deviceStatus/deviceStatusSchema.js';
 import { Side } from '../db/schedulesSchema.js';
 import { Gesture, GestureSchema } from '../db/settingsSchema.js';
-import { updateDeviceStatus } from '../routes/deviceStatus/updateDeviceStatus.js';
-import { DeepPartial } from 'ts-essentials';
 import serverStatus from '../serverStatus.js';
+import { playHapticAck, pulseCountForGesture } from './hapticAck.js';
+import { recordGestureResult, runGestureAction } from './gestureActions.js';
 
 
 
 export class FrankenMonitor {
   private isRunning: boolean;
   private deviceStatus?: DeviceStatus;
+  /** Prevent overlapping gesture handling storms */
+  private handlingGesture: boolean;
 
   constructor() {
     this.isRunning = false;
     this.deviceStatus = undefined;
+    this.handlingGesture = false;
   }
 
   public async start() {
@@ -41,30 +44,33 @@ export class FrankenMonitor {
     this.isRunning = false;
   }
 
-  private async processGesture(side: Side, gesture: Gesture) {
-    const behavior = settingsDB.data[side].taps[gesture];
-    if (behavior.type === 'temperature') {
-      const currentTemperatureTarget = this.deviceStatus![side].targetTemperatureF;
-      let newTemperatureTargetF;
-      const change = behavior.amount;
-      if (behavior.change === 'increment') {
-        newTemperatureTargetF = currentTemperatureTarget + change;
-      } else {
-        newTemperatureTargetF = currentTemperatureTarget + (-1 * change);
-      }
-      logger.debug(`Processing gesture temperature change for ${side}. ${currentTemperatureTarget} -> ${newTemperatureTargetF}`);
-      return await updateDeviceStatus({ [side]: { targetTemperatureF: newTemperatureTargetF } } as DeepPartial<DeviceStatus>);
-    } else if (behavior.type) {
-      // TODO: Add alarm handling
-      logger.warn('Skipping gesture...');
+  private async processGesture(side: Side, gesture: Gesture, nextDeviceStatus: DeviceStatus) {
+    await settingsDB.read();
+    const behavior = settingsDB.data[side]?.taps?.[gesture];
+    if (!behavior) {
+      logger.warn(`No tap mapping for ${side}.${gesture}`);
+      return;
     }
+
+    logger.info(`Gesture detected: ${side} ${gesture} → ${behavior.type}`);
+
+    // Haptic ack on the same side, paced like a mouse double-click (~2/sec)
+    const hapticPromise = playHapticAck(side, pulseCountForGesture(gesture));
+    const actionPromise = runGestureAction(side, gesture, behavior, nextDeviceStatus);
+
+    const [, actionResult] = await Promise.all([hapticPromise, actionPromise]);
+    recordGestureResult(side, gesture, actionResult);
+    logger.info(actionResult.message);
   }
 
-  private processGesturesForSide(nextDeviceStatus: DeviceStatus, side: Side) {
+  private async processGesturesForSide(nextDeviceStatus: DeviceStatus, side: Side) {
     try {
       for (const gesture of GestureSchema.options) {
-        if (nextDeviceStatus[side].taps?.[gesture] !== this?.deviceStatus?.[side].taps?.[gesture]) {
-          this.processGesture(side, gesture);
+        const previous = this.deviceStatus?.[side]?.taps?.[gesture];
+        const next = nextDeviceStatus[side]?.taps?.[gesture];
+        // Counter present and increased (or newly appeared)
+        if (next !== undefined && next !== previous) {
+          await this.processGesture(side, gesture, nextDeviceStatus);
         }
       }
     } catch (error) {
@@ -77,9 +83,18 @@ export class FrankenMonitor {
       logger.warn('Missing current deviceStatus, exiting...');
       return;
     }
+    if (this.handlingGesture) {
+      logger.debug('Already handling a gesture; skipping this poll');
+      return;
+    }
 
-    this.processGesturesForSide(nextDeviceStatus, 'left');
-    this.processGesturesForSide(nextDeviceStatus, 'right');
+    this.handlingGesture = true;
+    try {
+      await this.processGesturesForSide(nextDeviceStatus, 'left');
+      await this.processGesturesForSide(nextDeviceStatus, 'right');
+    } finally {
+      this.handlingGesture = false;
+    }
   }
 
 
@@ -90,9 +105,9 @@ export class FrankenMonitor {
     let waitTime = hasGestures ? 2_000 : 60_000;
     if (hasGestures) {
       this.deviceStatus = await franken.getDeviceStatus(true);
-      logger.debug(`Gestures supported for ${this.deviceStatus.coverVersion}`);
+      logger.info(`Gestures supported for ${this.deviceStatus.coverVersion}`);
     } else {
-      logger.debug(`Gestures not supported for ${this.deviceStatus.coverVersion}`);
+      logger.info(`Gestures not supported for ${this.deviceStatus.coverVersion}`);
     }
     // No point in querying device status every 3 seconds for checking the prime status...
     while (this.isRunning) {
@@ -106,7 +121,7 @@ export class FrankenMonitor {
           const nextDeviceStatus = await franken.getDeviceStatus(hasGestures);
           await settingsDB.read();
           if (hasGestures) {
-            this.processGestures(nextDeviceStatus);
+            await this.processGestures(nextDeviceStatus);
           }
           this.deviceStatus = nextDeviceStatus;
           serverStatus.status.frankenMonitor.status = 'healthy';
@@ -124,4 +139,3 @@ export class FrankenMonitor {
     logger.debug('FrankenMonitor loop exited');
   }
 }
-

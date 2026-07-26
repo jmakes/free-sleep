@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import Navbar from './Navbar';
 import Box from '@mui/material/Box';
+import GestureToast from './GestureToast';
 
 
 export default function Layout() {
@@ -21,6 +22,7 @@ export default function Layout() {
       { /* Renders current route */ }
       <Outlet/>
       <Navbar/>
+      <GestureToast />
     </Box>
   );
 }

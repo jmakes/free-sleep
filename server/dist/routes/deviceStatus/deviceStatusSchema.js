@@ -10,9 +10,10 @@ const SideStatusSchema = z.object({
     isOn: z.boolean(),
     isAlarmVibrating: z.boolean(),
     taps: z.object({
-        doubleTap: z.number(),
-        tripleTap: z.number(),
-        quadTap: z.number(),
+        singleTap: z.number().optional(),
+        doubleTap: z.number().optional(),
+        tripleTap: z.number().optional(),
+        quadTap: z.number().optional(),
     }).optional(),
 }).strict();
 export const DeviceStatusSchema = z.object({

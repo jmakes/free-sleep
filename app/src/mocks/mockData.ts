@@ -207,21 +207,22 @@ const createSettings = (): Settings => ({
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },
     },
     taps: {
-      doubleTap: {
+      singleTap: {
         type: 'temperature',
         change: 'decrement',
         amount: 1,
       },
-      tripleTap: {
+      doubleTap: {
         type: 'temperature',
         change: 'increment',
         amount: 1,
       },
+      tripleTap: {
+        type: 'power',
+        action: 'off',
+      },
       quadTap: {
-        type: 'alarm',
-        behavior: 'dismiss',
-        snoozeDuration: 60,
-        inactiveAlarmBehavior: 'power',
+        type: 'scheduleApply',
       },
     }
   },
@@ -233,21 +234,22 @@ const createSettings = (): Settings => ({
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },
     },
     taps: {
-      doubleTap: {
+      singleTap: {
         type: 'temperature',
         change: 'decrement',
         amount: 1,
       },
-      tripleTap: {
+      doubleTap: {
         type: 'temperature',
         change: 'increment',
         amount: 1,
       },
+      tripleTap: {
+        type: 'power',
+        action: 'off',
+      },
       quadTap: {
-        type: 'alarm',
-        behavior: 'dismiss',
-        snoozeDuration: 60,
-        inactiveAlarmBehavior: 'power',
+        type: 'scheduleApply',
       },
     }
   },

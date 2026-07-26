@@ -236,6 +236,21 @@ Re-test install/update after merging anything under `scripts/`.
 
 ---
 
+## Cover tap controls (this fork)
+
+Per-side mappings live under **Settings → Side settings** (with away mode / name).
+
+| Gesture | Default action |
+|---------|----------------|
+| Single | −1°F |
+| Double | +1°F |
+| Triple | Power off that side |
+| Quad | Write current target temp into the active schedule slot for **all days** |
+
+- Haptic ack: same side as the tap, ~2 pulses/second (1–4 pulses matching the gesture).
+- Toasts: brief on-screen confirmation when a tap is handled.
+- Single-tap depends on Pod firmware reporting `singleTap` counters; double/triple/quad are confirmed on Pod 4/5.
+
 ## Resource management (this fork)
 
 | Policy | Default | Env override |

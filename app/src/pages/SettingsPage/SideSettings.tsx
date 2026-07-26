@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 
 import { Settings } from '@api/settingsSchema.ts';
 import { Side, useAppStore } from '@state/appStore.tsx';
+import TapControls from './TapControls.tsx';
+
 
 type AwayModeSwitchProps = {
   side: Side;
@@ -32,7 +34,7 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
   };
 
   return (
-    <Box sx={ { display: 'flex', flexDirection: 'column', alignItems: 'center' } }>
+    <Box sx={ { display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' } }>
       <Typography variant="h6">{ title } Side</Typography>
       <TextField
         label="Side Name"
@@ -45,7 +47,7 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
         inputProps={ { maxLength: 20 } }
         fullWidth
       />
-      <Grid container spacing={ 0 }>
+      <Grid container spacing={ 0 } sx={ { width: '100%', mt: 1 } }>
         <Typography alignContent="center">Away mode</Typography>
         <Switch
           disabled={ isUpdating }
@@ -53,6 +55,7 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
           onChange={ (event) => updateSettings({ [side]: { awayMode: event.target.checked } }) }
         />
       </Grid>
+      <TapControls side={ side } settings={ settings } updateSettings={ updateSettings } />
     </Box>
   );
 }

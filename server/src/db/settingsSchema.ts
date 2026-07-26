@@ -12,6 +12,16 @@ const TemperatureTapConfig = z.object({
   amount: z.number().min(0).max(10),
 });
 
+const PowerTapConfig = z.object({
+  type: z.literal('power'),
+  action: z.enum(['off', 'on', 'toggle']),
+});
+
+/** Copy current target temp into the active schedule slot for all days of the week */
+const ScheduleApplyTapConfig = z.object({
+  type: z.literal('scheduleApply'),
+});
+
 const AlarmTapConfig = z.object({
   type: z.literal('alarm'),
   behavior: z.enum(['snooze', 'dismiss']),
@@ -19,12 +29,20 @@ const AlarmTapConfig = z.object({
   inactiveAlarmBehavior: z.enum(['power', 'none'])
 });
 
+const NoneTapConfig = z.object({
+  type: z.literal('none'),
+});
+
 export const TapConfig = z.discriminatedUnion('type', [
   TemperatureTapConfig,
+  PowerTapConfig,
+  ScheduleApplyTapConfig,
   AlarmTapConfig,
+  NoneTapConfig,
 ]);
 
-export const GestureSchema = z.enum(['doubleTap', 'tripleTap', 'quadTap']);
+/** Multi-tap patterns reported by the Pod cover (Pod 4/5). singleTap is optional on hardware. */
+export const GestureSchema = z.enum(['singleTap', 'doubleTap', 'tripleTap', 'quadTap']);
 
 const SideSettingsSchema = z.object({
   name: z.string().min(1).max(20),
@@ -41,6 +59,7 @@ const SideSettingsSchema = z.object({
     })
   }),
   taps: z.object({
+    singleTap: TapConfig,
     doubleTap: TapConfig,
     tripleTap: TapConfig,
     quadTap: TapConfig,
@@ -62,4 +81,5 @@ export const SettingsSchema = z.object({
 
 export type SideSettings = z.infer<typeof SideSettingsSchema>;
 export type Settings = z.infer<typeof SettingsSchema>;
-export type Gesture = z.infer<typeof GestureSchema>
+export type Gesture = z.infer<typeof GestureSchema>;
+export type TapConfigType = z.infer<typeof TapConfig>;
