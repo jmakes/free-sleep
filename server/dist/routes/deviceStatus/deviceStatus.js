@@ -4,6 +4,30 @@ import { DeviceStatusSchema } from './deviceStatusSchema.js';
 import logger from '../../logger.js';
 import { updateDeviceStatus } from './updateDeviceStatus.js';
 const router = express.Router();
+function resolveBody(req) {
+    if (req.body !== undefined && req.body !== null && req.body !== '') {
+        // express.json may leave a string if content-type was text/plain
+        if (typeof req.body === 'string') {
+            try {
+                return JSON.parse(req.body);
+            }
+            catch {
+                return req.body;
+            }
+        }
+        return req.body;
+    }
+    // Fallback: parse raw buffer if middleware stashed it
+    if (req.rawBody && req.rawBody.length > 0) {
+        try {
+            return JSON.parse(req.rawBody.toString('utf8'));
+        }
+        catch (error) {
+            logger.warn(`Failed to parse rawBody: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    return undefined;
+}
 router.get('/deviceStatus', async (req, res) => {
     try {
         const franken = await connectFranken();
@@ -17,13 +41,12 @@ router.get('/deviceStatus', async (req, res) => {
     }
 });
 router.post('/deviceStatus', async (req, res) => {
-    const body = req.body;
     const contentType = req.headers['content-type'] ?? '(none)';
     const contentLength = req.headers['content-length'] ?? '(none)';
-    // Classic failure mode: client/proxy sent no JSON body → body is undefined
+    const body = resolveBody(req);
     if (body === undefined || body === null) {
-        logger.error(`POST /deviceStatus missing body (content-type=${contentType}, content-length=${contentLength}). ` +
-            'Client must send JSON with Content-Type: application/json.');
+        const rawLen = req.rawBody?.length ?? 0;
+        logger.error(`POST /deviceStatus missing body (content-type=${contentType}, content-length=${contentLength}, rawBodyBytes=${rawLen}).`);
         res.status(400).json({
             error: {
                 message: 'Missing JSON body. Send Content-Type: application/json with a payload like {"left":{"isOn":true}}.',

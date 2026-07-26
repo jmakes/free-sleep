@@ -80,7 +80,19 @@ export default function (app) {
         });
         next();
     });
-    app.use(express.json());
+    // Parse JSON bodies. Also accept text/plain JSON (some clients / proxies).
+    app.use(express.json({
+        type: (req) => {
+            const contentType = req.headers['content-type'] || '';
+            return (contentType.includes('application/json') ||
+                contentType.includes('text/json') ||
+                contentType.includes('text/plain'));
+        },
+        verify: (req, _res, buf) => {
+            // Stash raw bytes for diagnostics when JSON parse leaves body empty
+            req.rawBody = buf;
+        },
+    }));
     // Allow local development + LAN hostnames
     app.use(cors({
         origin: (origin, callback) => {

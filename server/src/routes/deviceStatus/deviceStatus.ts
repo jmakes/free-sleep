@@ -7,6 +7,33 @@ import { DeepPartial } from 'ts-essentials';
 
 const router = express.Router();
 
+type RequestWithRawBody = Request & { rawBody?: Buffer };
+
+function resolveBody(req: RequestWithRawBody): unknown {
+  if (req.body !== undefined && req.body !== null && req.body !== '') {
+    // express.json may leave a string if content-type was text/plain
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body);
+      } catch {
+        return req.body;
+      }
+    }
+    return req.body;
+  }
+
+  // Fallback: parse raw buffer if middleware stashed it
+  if (req.rawBody && req.rawBody.length > 0) {
+    try {
+      return JSON.parse(req.rawBody.toString('utf8'));
+    } catch (error) {
+      logger.warn(`Failed to parse rawBody: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  return undefined;
+}
+
 
 router.get('/deviceStatus', async (req: Request, res: Response) => {
   try {
@@ -22,15 +49,14 @@ router.get('/deviceStatus', async (req: Request, res: Response) => {
 
 
 router.post('/deviceStatus', async (req: Request, res: Response) => {
-  const body = req.body;
   const contentType = req.headers['content-type'] ?? '(none)';
   const contentLength = req.headers['content-length'] ?? '(none)';
+  const body = resolveBody(req as RequestWithRawBody);
 
-  // Classic failure mode: client/proxy sent no JSON body → body is undefined
   if (body === undefined || body === null) {
+    const rawLen = (req as RequestWithRawBody).rawBody?.length ?? 0;
     logger.error(
-      `POST /deviceStatus missing body (content-type=${contentType}, content-length=${contentLength}). ` +
-      'Client must send JSON with Content-Type: application/json.'
+      `POST /deviceStatus missing body (content-type=${contentType}, content-length=${contentLength}, rawBodyBytes=${rawLen}).`
     );
     res.status(400).json({
       error: {

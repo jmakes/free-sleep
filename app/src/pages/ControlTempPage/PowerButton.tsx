@@ -1,6 +1,6 @@
 import SearchIcon from '@mui/icons-material/Search';
 import { Button, Box, Alert } from '@mui/material';
-import { postDeviceStatus } from '@api/deviceStatus.ts';
+import { DeviceStatusPostError, postDeviceStatus } from '@api/deviceStatus.ts';
 import { DeviceStatus } from '@api/deviceStatusSchema.ts';
 import { DeepPartial } from 'ts-essentials';
 import { useAppStore } from '@state/appStore.tsx';
@@ -10,7 +10,6 @@ import { useServices } from '@api/services.ts';
 import { Job, postJobs } from '@api/jobs.ts';
 import AnalyzeSleepNotification from './AnalyzeSleepNotification.tsx';
 import { useControlTempStore } from './controlTempStore.tsx';
-import axios from 'axios';
 
 
 type PowerButtonProps = {
@@ -37,7 +36,7 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
       deviceStatusStore?.[side]?.targetTemperatureF ??
       82;
 
-    const deviceStatus: DeepPartial<DeviceStatus> = {
+    const payload: DeepPartial<DeviceStatus> = {
       [side]: powerOn
         ? { isOn: true, targetTemperatureF }
         : { isOn: false },
@@ -50,8 +49,8 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
     }
 
     setIsUpdating(true);
-    setDeviceStatus(deviceStatus);
-    postDeviceStatus(deviceStatus)
+    setDeviceStatus(payload);
+    postDeviceStatus(payload)
       .then(() => {
         // Wait for franken to apply TEMP_LEVEL + TEMP_DURATION before refresh
         return new Promise((resolve) => setTimeout(resolve, 1_500));
@@ -71,11 +70,8 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
       .catch(error => {
         console.error(error);
         let message = 'Failed to update power';
-        if (axios.isAxiosError(error)) {
-          message =
-            (error.response?.data as { error?: { message?: string } })?.error?.message ||
-            error.message ||
-            message;
+        if (error instanceof DeviceStatusPostError) {
+          message = error.message;
         } else if (error instanceof Error) {
           message = error.message;
         }
