@@ -1,5 +1,5 @@
 import SearchIcon from '@mui/icons-material/Search';
-import { Button, Box } from '@mui/material';
+import { Button, Box, Alert } from '@mui/material';
 import { postDeviceStatus } from '@api/deviceStatus.ts';
 import { DeviceStatus } from '@api/deviceStatusSchema.ts';
 import { DeepPartial } from 'ts-essentials';
@@ -10,6 +10,7 @@ import { useServices } from '@api/services.ts';
 import { Job, postJobs } from '@api/jobs.ts';
 import AnalyzeSleepNotification from './AnalyzeSleepNotification.tsx';
 import { useControlTempStore } from './controlTempStore.tsx';
+import axios from 'axios';
 
 
 type PowerButtonProps = {
@@ -21,17 +22,25 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
   const { isUpdating, setIsUpdating, side } = useAppStore();
   const { data: settings } = useSettings();
   const { data: services } = useServices();
+  const deviceStatusStore = useControlTempStore(state => state.deviceStatus);
   const setDeviceStatus = useControlTempStore(state => state.setDeviceStatus);
   const isInAwayMode = settings?.[side].awayMode;
   const disabled = isUpdating || isInAwayMode;
   const [showAnalyzeSleep, setShowAnalyzeSleep] = useState(false);
   const [showAnalyzeNotification, setShowAnalyzeNotification] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleOnClick = (powerOn: boolean) => {
+    setErrorMessage(null);
+    // Match schedule power-on: send duration + a temperature so the cover engages
+    const targetTemperatureF =
+      deviceStatusStore?.[side]?.targetTemperatureF ??
+      82;
+
     const deviceStatus: DeepPartial<DeviceStatus> = {
-      [side]: {
-        isOn: powerOn
-      }
+      [side]: powerOn
+        ? { isOn: true, targetTemperatureF }
+        : { isOn: false },
     };
     if (powerOn) {
       setShowAnalyzeSleep(false);
@@ -44,18 +53,33 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
     setDeviceStatus(deviceStatus);
     postDeviceStatus(deviceStatus)
       .then(() => {
-        // Wait for franken to apply LEFT/RIGHT_TEMP_DURATION before refresh
-        return new Promise((resolve) => setTimeout(resolve, 1_000));
+        // Wait for franken to apply TEMP_LEVEL + TEMP_DURATION before refresh
+        return new Promise((resolve) => setTimeout(resolve, 1_500));
       })
       .then(() => refetch())
       .then((result) => {
-        // react-query refetch() resolves to { data, error, ... } — data is DeviceStatus
         if (result?.data) {
           setDeviceStatus(result.data);
+          const stillOff = powerOn && !result.data?.[side]?.isOn;
+          if (stillOff) {
+            setErrorMessage(
+              'Command sent, but the pod still reports off. Check free-sleep logs / franken status.'
+            );
+          }
         }
       })
       .catch(error => {
         console.error(error);
+        let message = 'Failed to update power';
+        if (axios.isAxiosError(error)) {
+          message =
+            (error.response?.data as { error?: { message?: string } })?.error?.message ||
+            error.message ||
+            message;
+        } else if (error instanceof Error) {
+          message = error.message;
+        }
+        setErrorMessage(message);
       })
       .finally(() => {
         setIsUpdating(false);
@@ -79,6 +103,13 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
       <Button variant="outlined" disabled={ disabled } onClick={ () => handleOnClick(!isOn) }>
         { isOn ? 'Turn off' : 'Turn on' }
       </Button>
+      {
+        errorMessage && (
+          <Alert severity="error" onClose={ () => setErrorMessage(null) }>
+            { errorMessage }
+          </Alert>
+        )
+      }
       {
         showAnalyzeSleep && !isUpdating && services?.biometrics?.enabled && (
           <Button

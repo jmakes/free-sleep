@@ -33,9 +33,10 @@ const defaultSideSettings: SideSettings = {
       change: 'increment',
       amount: 1,
     },
+    // Power-off via triple-tap temporarily disabled (false positives / diagnosis).
+    // Re-enable after tap counters are proven stable on-device.
     tripleTap: {
-      type: 'power',
-      action: 'off',
+      type: 'none',
     },
     quadTap: {
       type: 'scheduleApply',
@@ -78,6 +79,13 @@ settingsDB.data = _.merge({}, defaultData, settingsDB.data);
 if (legacyTapMap) {
   settingsDB.data.left.taps = _.cloneDeep(defaultSideSettings.taps);
   settingsDB.data.right.taps = _.cloneDeep(defaultSideSettings.taps);
+}
+
+// Safety: neutralize power gestures until cover-tap detection is validated on this Pod
+for (const side of ['left', 'right'] as const) {
+  if (settingsDB.data[side]?.taps?.tripleTap?.type === 'power') {
+    settingsDB.data[side].taps.tripleTap = { type: 'none' };
+  }
 }
 
 await settingsDB.write();

@@ -86,7 +86,7 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
     const nextTaps = {
       singleTap: taps?.singleTap ?? defaultConfigForType('temperature'),
       doubleTap: taps?.doubleTap ?? defaultConfigForType('temperature'),
-      tripleTap: taps?.tripleTap ?? defaultConfigForType('power'),
+      tripleTap: taps?.tripleTap ?? defaultConfigForType('none'),
       quadTap: taps?.quadTap ?? defaultConfigForType('scheduleApply'),
       [gesture]: config,
     };

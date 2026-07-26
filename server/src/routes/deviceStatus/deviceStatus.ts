@@ -7,10 +7,17 @@ import { DeepPartial } from 'ts-essentials';
 
 const router = express.Router();
 
+
 router.get('/deviceStatus', async (req: Request, res: Response) => {
-  const franken = await connectFranken();
-  const resp = await franken.getDeviceStatus();
-  res.json(resp);
+  try {
+    const franken = await connectFranken();
+    const resp = await franken.getDeviceStatus();
+    res.json(resp);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`GET /deviceStatus failed: ${message}`);
+    res.status(503).json({ error: { message: `Device status unavailable: ${message}` } });
+  }
 });
 
 
@@ -26,8 +33,14 @@ router.post('/deviceStatus', async (req: Request, res: Response) => {
     return;
   }
 
-  await updateDeviceStatus(body as DeepPartial<DeviceStatus>);
-  res.status(204).end();
+  try {
+    await updateDeviceStatus(body as DeepPartial<DeviceStatus>);
+    res.status(204).end();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`POST /deviceStatus failed: ${message}`);
+    res.status(500).json({ error: { message } });
+  }
 });
 
 

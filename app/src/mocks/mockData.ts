@@ -218,8 +218,7 @@ const createSettings = (): Settings => ({
         amount: 1,
       },
       tripleTap: {
-        type: 'power',
-        action: 'off',
+        type: 'none',
       },
       quadTap: {
         type: 'scheduleApply',
@@ -245,8 +244,7 @@ const createSettings = (): Settings => ({
         amount: 1,
       },
       tripleTap: {
-        type: 'power',
-        action: 'off',
+        type: 'none',
       },
       quadTap: {
         type: 'scheduleApply',

@@ -157,16 +157,11 @@ export async function runGestureAction(
     }
 
     if (config.type === 'power') {
-      let isOn = deviceStatus[side].isOn;
-      if (config.action === 'off') isOn = false;
-      else if (config.action === 'on') isOn = true;
-      else isOn = !isOn;
-
-      await updateDeviceStatus({
-        [side]: { isOn },
-      } as DeepPartial<DeviceStatus>);
-      const message = `${side}: ${gesture} → power ${isOn ? 'on' : 'off'}`;
-      return { success: true, message };
+      // Temporarily refuse power gestures so a bad tap detection cannot fight the UI
+      // or leave a side stuck off while debugging power-on reliability.
+      const message = `${side}: ${gesture} → power action ignored (temporarily disabled)`;
+      logger.warn(message);
+      return { success: false, message };
     }
 
     if (config.type === 'scheduleApply') {

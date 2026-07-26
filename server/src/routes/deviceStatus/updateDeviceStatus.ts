@@ -9,6 +9,8 @@ import settingsDB from '../../db/settings.js';
 import memoryDB from '../../db/memoryDB.js';
 import { INVERTED_SETTINGS_KEY_MAPPING } from '../../8sleep/loadDeviceStatus.js';
 
+const DEFAULT_ON_TEMP_F = 82;
+
 const calculateLevelFromF = (temperatureF: number) => {
   const level = (temperatureF - 82.5) / 27.5 * 100;
   return Math.round(level).toString();
@@ -17,15 +19,18 @@ const calculateLevelFromF = (temperatureF: number) => {
 const updateSide = async (side: 'left' | 'right', sideStatus: DeepPartial<SideStatus>) => {
   await settingsDB.read();
   const settings = settingsDB.data;
-  if (side === 'left') {
-    if (settings.left.awayMode) {
-      logger.warn('Left side is in away mode, not updating side');
-    }
-  } else {
-    if (settings.right.awayMode) {
-      logger.warn('Right side is in away mode, not updating side');
+
+  if (settings[side]?.awayMode) {
+    // Only block updates for the side that is actually away (and the other side is not
+    // driving dual-control). Upstream logged but continued; that could surprise users.
+    const otherSide = side === 'left' ? 'right' : 'left';
+    if (!settings[otherSide]?.awayMode) {
+      const message = `${side} side is in away mode, not updating side`;
+      logger.warn(message);
+      throw new Error(message);
     }
   }
+
   const controlBothSides = settings.left.awayMode || settings.right.awayMode;
   const updateLeft = side === 'left' || controlBothSides;
   const updateRight = side === 'right' || controlBothSides;
@@ -36,14 +41,34 @@ const updateSide = async (side: 'left' | 'right', sideStatus: DeepPartial<SideSt
     logger.debug('One side is in away mode, updating both sides...');
   }
 
-  if (isOn !== undefined) {
-    const onDuration = isOn ? '43200' : '0';
-    if (updateLeft) await executeFunction('LEFT_TEMP_DURATION', onDuration);
-    if (updateRight) await executeFunction('RIGHT_TEMP_DURATION', onDuration);
+  // Power on: set duration AND a temperature level. Duration alone can leave the
+  // side looking "on" in software without the cover actually engaging; matching
+  // the schedule power-on path is more reliable.
+  if (isOn === true) {
+    const onDuration = '43200';
+    const tempF = targetTemperatureF ?? DEFAULT_ON_TEMP_F;
+    const level = calculateLevelFromF(tempF);
+    logger.info(
+      `Power ON ${side}: duration=${onDuration}s tempF=${tempF} level=${level} updateL=${updateLeft} updateR=${updateRight}`
+    );
+    if (updateLeft) {
+      await executeFunction('TEMP_LEVEL_LEFT', level);
+      await executeFunction('LEFT_TEMP_DURATION', onDuration);
+    }
+    if (updateRight) {
+      await executeFunction('TEMP_LEVEL_RIGHT', level);
+      await executeFunction('RIGHT_TEMP_DURATION', onDuration);
+    }
+  } else if (isOn === false) {
+    logger.info(`Power OFF ${side}: updateL=${updateLeft} updateR=${updateRight}`);
+    if (updateLeft) await executeFunction('LEFT_TEMP_DURATION', '0');
+    if (updateRight) await executeFunction('RIGHT_TEMP_DURATION', '0');
   }
 
-  if (targetTemperatureF) {
+  // Temperature-only updates (power already on)
+  if (targetTemperatureF !== undefined && isOn !== true) {
     const level = calculateLevelFromF(targetTemperatureF);
+    logger.info(`Set temp ${side}: tempF=${targetTemperatureF} level=${level}`);
     if (updateLeft) await executeFunction('TEMP_LEVEL_LEFT', level);
     if (updateRight) await executeFunction('TEMP_LEVEL_RIGHT', level);
   }
@@ -72,7 +97,7 @@ const updateSettings = async (settings: Partial<DeviceStatus['settings']>) => {
 };
 
 export const updateDeviceStatus = async (deviceStatus: DeepPartial<DeviceStatus>) => {
-  logger.info(`Updating device status..`);
+  logger.info(`Updating device status: ${JSON.stringify(deviceStatus)}`);
 
   if (deviceStatus.isPriming) await executeFunction('PRIME');
   if (deviceStatus?.left) await updateSide('left', deviceStatus.left);

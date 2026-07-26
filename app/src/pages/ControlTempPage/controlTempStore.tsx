@@ -6,14 +6,15 @@ import { DeviceStatus } from '@api/deviceStatusSchema.ts';
 
 type ControlTempStore = {
   deviceStatus: DeviceStatus | undefined;
-  setDeviceStatus: (newDeviceStatus: DeepPartial<DeviceStatus>) => void;
+  setDeviceStatus: (newDeviceStatus: DeepPartial<DeviceStatus> | DeviceStatus) => void;
 };
 
 export const useControlTempStore = create<ControlTempStore>((set, get) => ({
   deviceStatus: undefined,
   setDeviceStatus: (newDeviceStatus) => {
     const { deviceStatus } = get();
-    const updatedDeviceStatus = _.merge(deviceStatus, newDeviceStatus);
+    // Never mutate existing state / react-query objects in place
+    const updatedDeviceStatus = _.merge({}, deviceStatus ?? {}, newDeviceStatus) as DeviceStatus;
     set({ deviceStatus: updatedDeviceStatus });
   },
 }));

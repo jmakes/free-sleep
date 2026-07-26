@@ -17,6 +17,21 @@ function getLocalIp() {
     }
     return 'localhost'; // Default to localhost if LAN IP isn't found
 }
+function isPrivateIp(hostname) {
+    if (hostname === 'localhost' || hostname.endsWith('.localhost'))
+        return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname))
+        return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname))
+        return true;
+    // 172.16.0.0 – 172.31.255.255
+    const match = hostname.match(/^172\.(\d{1,2})\.\d{1,3}\.\d{1,3}$/);
+    if (match) {
+        const second = Number(match[1]);
+        return second >= 16 && second <= 31;
+    }
+    return false;
+}
 /**
  * Check if the request origin is allowed, i.e., from localhost or LAN IP, or
  * matches the `ALLOWED_ORIGIN` environment variable. The function also allows
@@ -34,13 +49,24 @@ function isAllowedOrigin(origin) {
     if (ALLOWED_ORIGIN === '*') {
         return true;
     }
-    if (origin.startsWith(`http://${getLocalIp()}:`) ||
-        origin.startsWith('http://localhost') ||
-        origin.startsWith('http://192.168.') ||
-        origin.startsWith('http://172.16.') ||
-        origin.startsWith('http://10.0.') ||
-        (ALLOWED_ORIGIN && origin.startsWith(ALLOWED_ORIGIN))) {
-        return true;
+    try {
+        const url = new URL(origin);
+        const host = url.hostname;
+        // mDNS / home hostnames (e.g. http://pod.lan, http://8sleep.local)
+        if (host.endsWith('.lan') || host.endsWith('.local')) {
+            return true;
+        }
+        if (isPrivateIp(host)) {
+            return true;
+        }
+        if (origin.startsWith(`http://${getLocalIp()}:`) ||
+            origin.startsWith('http://localhost') ||
+            (ALLOWED_ORIGIN && origin.startsWith(ALLOWED_ORIGIN))) {
+            return true;
+        }
+    }
+    catch {
+        return false;
     }
     return false;
 }
@@ -55,12 +81,13 @@ export default function (app) {
         next();
     });
     app.use(express.json());
-    // Allow local development
+    // Allow local development + LAN hostnames
     app.use(cors({
         origin: (origin, callback) => {
             if (isAllowedOrigin(origin)) {
                 return callback(null, true);
             }
+            logger.warn(`CORS blocked origin: ${origin}`);
             return callback(new Error('Not allowed by CORS'));
         }
     }));
