@@ -17,13 +17,26 @@ router.get('/deviceStatus', async (req, res) => {
     }
 });
 router.post('/deviceStatus', async (req, res) => {
-    const { body } = req;
+    const body = req.body;
+    const contentType = req.headers['content-type'] ?? '(none)';
+    const contentLength = req.headers['content-length'] ?? '(none)';
+    // Classic failure mode: client/proxy sent no JSON body → body is undefined
+    if (body === undefined || body === null) {
+        logger.error(`POST /deviceStatus missing body (content-type=${contentType}, content-length=${contentLength}). ` +
+            'Client must send JSON with Content-Type: application/json.');
+        res.status(400).json({
+            error: {
+                message: 'Missing JSON body. Send Content-Type: application/json with a payload like {"left":{"isOn":true}}.',
+            },
+        });
+        return;
+    }
     const validationResult = DeviceStatusSchema.deepPartial().safeParse(body);
     if (!validationResult.success) {
-        logger.error('Invalid device status update:', validationResult.error);
+        logger.error(`Invalid device status update (content-type=${contentType}): ${JSON.stringify(validationResult.error.issues)} body=${JSON.stringify(body)}`);
         res.status(400).json({
             error: 'Invalid request data',
-            details: validationResult?.error?.errors,
+            details: validationResult.error.issues,
         });
         return;
     }

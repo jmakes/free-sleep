@@ -82,6 +82,16 @@ const App = () => {
 
 async function enableMocking() {
   if (import.meta.env.VITE_ENV !== 'demo') {
+    // Production / pod builds: kill any leftover demo MSW service worker that
+    // can intercept API calls and strip POST bodies (power/temp updates 400).
+    if ('serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+      } catch {
+        // ignore
+      }
+    }
     return;
   }
   // eslint-disable-next-line no-console
