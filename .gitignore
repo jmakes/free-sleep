@@ -22,3 +22,7 @@ app/dist/
 /server/free-sleep-data/*
 
 !.gitkeep
+
+# MSW is demo-only; do not ship worker to the Pod
+app/public/mockServiceWorker.js
+server/public/mockServiceWorker.js
