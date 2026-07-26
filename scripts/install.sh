@@ -3,12 +3,35 @@
 set -euo pipefail
 
 # --------------------------------------------------------------------------------
+# Fork source (defaults = jmakes/free-sleep). Env vars and repo_config.sh can override.
+# See scripts/repo_config.sh and FORK.md.
+if [ -f /home/dac/free-sleep/scripts/repo_config.sh ]; then
+  # shellcheck disable=SC1091
+  . /home/dac/free-sleep/scripts/repo_config.sh
+elif [ -f /home/dac/free-sleep-backup/scripts/repo_config.sh ]; then
+  # shellcheck disable=SC1091
+  . /home/dac/free-sleep-backup/scripts/repo_config.sh
+else
+  # shellcheck disable=SC1091
+  # Inline defaults when this script is curl|bash'd before any tree exists
+  FREE_SLEEP_GITHUB_OWNER="${FREE_SLEEP_GITHUB_OWNER:-jmakes}"
+  FREE_SLEEP_GITHUB_REPO="${FREE_SLEEP_GITHUB_REPO:-free-sleep}"
+  FREE_SLEEP_GITHUB_BRANCH="${FREE_SLEEP_GITHUB_BRANCH:-main}"
+  FREE_SLEEP_REPO_ZIP_URL="${FREE_SLEEP_REPO_ZIP_URL:-https://github.com/${FREE_SLEEP_GITHUB_OWNER}/${FREE_SLEEP_GITHUB_REPO}/archive/refs/heads/${FREE_SLEEP_GITHUB_BRANCH}.zip}"
+  FREE_SLEEP_EXTRACTED_DIR="${FREE_SLEEP_EXTRACTED_DIR:-${FREE_SLEEP_GITHUB_REPO}-${FREE_SLEEP_GITHUB_BRANCH//\//-}}"
+fi
+
+# --------------------------------------------------------------------------------
 # Variables
-REPO_URL="https://github.com/throwaway31265/free-sleep/archive/refs/heads/main.zip"
+REPO_URL="$FREE_SLEEP_REPO_ZIP_URL"
 ZIP_FILE="free-sleep.zip"
 REPO_DIR="/home/dac/free-sleep"
 SERVER_DIR="$REPO_DIR/server"
 USERNAME="dac"
+EXTRACTED_DIR="$FREE_SLEEP_EXTRACTED_DIR"
+
+echo "Installing Free Sleep from ${FREE_SLEEP_GITHUB_OWNER}/${FREE_SLEEP_GITHUB_REPO}@${FREE_SLEEP_GITHUB_BRANCH}"
+echo "  zip: $REPO_URL"
 
 # --------------------------------------------------------------------------------
 # Download the repository
@@ -21,10 +44,17 @@ unzip -o -q "$ZIP_FILE"
 echo "Removing the zip file..."
 rm -f "$ZIP_FILE"
 
+if [ ! -d "$EXTRACTED_DIR" ]; then
+  echo "ERROR: Expected extracted directory '$EXTRACTED_DIR' not found after unzip."
+  echo "Top-level entries:"
+  ls -1
+  exit 1
+fi
+
 # Clean up existing directory and move new code into place
 echo "Setting up the installation directory..."
 rm -rf "$REPO_DIR"
-mv free-sleep-main "$REPO_DIR"
+mv "$EXTRACTED_DIR" "$REPO_DIR"
 
 
 chown -R "$USERNAME":"$USERNAME" "$REPO_DIR"

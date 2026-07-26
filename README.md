@@ -16,7 +16,14 @@
 
 ## 🛠️ [Installation Instructions](./INSTALLATION.md) 🛠
 
---- 
+## 🍴 [Fork install / update / deploy (jmakes)](./FORK.md)
+
+If you are running **this fork** (`jmakes/free-sleep`) instead of upstream, read [FORK.md](./FORK.md) for:
+- migrating an existing Free Sleep install onto this fork
+- keeping updates pointed at this repo (not upstream)
+- rsync deploys from a laptop and rollback steps
+
+---
 
 ## Overview
 Free Sleep is an open-source project that lets you control your Eight Sleep Pod locally — without relying on the cloud or the official app.

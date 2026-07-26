@@ -1,4 +1,7 @@
 {
-  "version": "2.1.5",
-  "branch": "main"
+  "version": "2.1.5-jmakes.0",
+  "branch": "main",
+  "githubOwner": "jmakes",
+  "githubRepo": "free-sleep",
+  "updateCheckUrl": "https://raw.githubusercontent.com/jmakes/free-sleep/main/server/src/serverInfo.json"
 }
