@@ -43,8 +43,13 @@ const transports: Array<winston.transports.ConsoleTransportInstance | winston.tr
 
 if (fileTransport) transports.push(fileTransport);
 
+const defaultLevel =
+  process.env.LOG_LEVEL?.toLowerCase() ||
+  (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
+
 const logger = winston.createLogger({
-  level: 'debug',
+  // Production pods default to info to cut disk I/O; set LOG_LEVEL=debug when needed
+  level: defaultLevel,
   format: winston.format.combine(
     winston.format.timestamp({
       format: () => moment.utc().format('YYYY-MM-DD HH:mm:ss [UTC]'),

@@ -4,6 +4,8 @@ import moment from 'moment-timezone';
 import { sleepRecordSchema, SleepRecord } from '../../db/sleepRecordsSchema.js';
 import { loadSleepRecords } from '../../db/loadSleepRecords.js';
 import { prisma } from '../../db/prisma.js';
+import { resolveUnixTimeRange } from '../../db/metricsRetention.js';
+import logger from '../../logger.js';
 
 const router = express.Router();
 
@@ -16,32 +18,37 @@ interface SleepQuery {
 
 
 router.get('/sleep', async (req: Request<object, object, object, SleepQuery>, res: Response) => {
-  const { startTime, endTime, side } = req.query;
-  const query: Prisma.sleep_recordsWhereInput = {
-    entered_bed_at: {},
-    left_bed_at: {},
-  };
+  try {
+    const { startTime, endTime, side } = req.query;
+    // Sleep records are low-volume; allow a longer default window than vitals.
+    let range;
+    try {
+      range = resolveUnixTimeRange(startTime, endTime, { defaultDays: 30, maxDays: 180 });
+    } catch {
+      res.status(400).json({ error: { message: 'Invalid startTime or endTime' } });
+      return;
+    }
 
-  if (side) query.side = side;
-  if (startTime) {
-    query.left_bed_at = {
-      gte: moment(startTime).unix(),
+    const query: Prisma.sleep_recordsWhereInput = {
+      // Overlap window: left_bed_at >= start AND entered_bed_at <= end
+      left_bed_at: { gte: range.gte },
+      entered_bed_at: { lte: range.lte },
     };
+
+    if (side) query.side = side;
+
+    const sleepRecords = await prisma.sleep_records.findMany({
+      where: query,
+      orderBy: { entered_bed_at: 'asc' },
+    });
+
+    const formattedRecords = await loadSleepRecords(sleepRecords);
+    res.json(formattedRecords);
+  } catch (error) {
+    logger.error(error);
+    const message = error instanceof Error ? error.message : 'Failed to load sleep records';
+    res.status(500).json({ error: { message } });
   }
-  if (endTime) {
-    query.entered_bed_at = {
-      lte: moment(endTime).unix(),
-    };
-  }
-
-  const sleepRecords = await prisma.sleep_records.findMany({
-    where: query,
-    orderBy: { entered_bed_at: 'asc' },
-  });
-
-  const formattedRecords = await loadSleepRecords(sleepRecords);
-  res.json(formattedRecords);
-
 });
 
 

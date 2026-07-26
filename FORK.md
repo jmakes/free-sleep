@@ -236,6 +236,23 @@ Re-test install/update after merging anything under `scripts/`.
 
 ---
 
+## Resource management (this fork)
+
+| Policy | Default | Env override |
+|--------|---------|--------------|
+| Vitals retention | 30 days | `FREE_SLEEP_VITALS_RETENTION_DAYS` |
+| Movement retention | 30 days | `FREE_SLEEP_MOVEMENT_RETENTION_DAYS` |
+| Sleep records retention | 180 days | `FREE_SLEEP_SLEEP_RETENTION_DAYS` |
+| Default metrics query window | 7 days (if no start/end) | `FREE_SLEEP_DEFAULT_QUERY_DAYS` |
+| Max metrics query window | 31 days | `FREE_SLEEP_MAX_QUERY_DAYS` |
+| Low-disk threshold | 150 MB free → tighter prune | `FREE_SLEEP_LOW_DISK_MB` |
+
+- Automatic prune: a few minutes after boot, then every 6 hours.
+- Manual prune: `fs-prune-db` or `POST /api/metrics/prune`
+- Disk/DB visibility: `GET /api/metrics/stats`
+- Unbounded `/api/metrics/vitals` (no time range) no longer scans the whole table.
+- Server + stream logs default to **info** (set `LOG_LEVEL=debug` if needed).
+
 ## Quick reference
 
 | Action | Command |
@@ -243,10 +260,12 @@ Re-test install/update after merging anything under `scripts/`.
 | Install/migrate to this fork | `curl -fsSL https://raw.githubusercontent.com/jmakes/free-sleep/main/scripts/install.sh \| bash` |
 | Update on Pod | `fs-update` |
 | Build on laptop | `./scripts/build_release.sh` |
-| Deploy from laptop | `./scripts/deploy_rsync.sh root@POD --build` |
+| Deploy from laptop | `./scripts/deploy_rsync.sh root@<POD_HOST> --build` |
 | Debug | `fs-debug` |
 | Restart | `fs-restart` |
 | Reset biometrics DB only | `fs-reset-db` |
+| Prune aged metrics | `fs-prune-db` |
+| Metrics stats | `curl http://<POD_HOST>:3000/api/metrics/stats` |
 
 Config knobs (env or `scripts/repo_config.sh`):
 

@@ -3,6 +3,7 @@ from typing import List
 import atexit
 import json
 import math
+import os
 import numpy as np
 import pandas as pd
 import sqlite3
@@ -13,6 +14,11 @@ from get_logger import *
 logger = get_logger()
 
 DB_FILE_PATH = f'{logger.folder_path}free-sleep.db'
+
+# Retention mirrors server defaults (env overrides supported)
+VITALS_RETENTION_DAYS = int(os.getenv('FREE_SLEEP_VITALS_RETENTION_DAYS', '30'))
+MOVEMENT_RETENTION_DAYS = int(os.getenv('FREE_SLEEP_MOVEMENT_RETENTION_DAYS', '30'))
+SLEEP_RETENTION_DAYS = int(os.getenv('FREE_SLEEP_SLEEP_RETENTION_DAYS', '180'))
 
 # Create a persistent connection
 conn = sqlite3.connect(DB_FILE_PATH, isolation_level=None, check_same_thread=False)
@@ -29,6 +35,54 @@ def _checkpoint_and_close():
 
 
 atexit.register(_checkpoint_and_close)
+
+
+def _is_disk_full_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return 'full' in message or 'database or disk is full' in message or getattr(error, 'sqlite_errorcode', None) == 13
+
+
+def prune_old_metrics(
+    vitals_days: int = None,
+    movement_days: int = None,
+    sleep_days: int = None,
+) -> dict:
+    """
+    Delete aged high-volume rows so inserts can succeed when the Pod disk is tight.
+    Safe to call from the stream process on SQLITE_FULL.
+    """
+    vitals_days = VITALS_RETENTION_DAYS if vitals_days is None else vitals_days
+    movement_days = MOVEMENT_RETENTION_DAYS if movement_days is None else movement_days
+    sleep_days = SLEEP_RETENTION_DAYS if sleep_days is None else sleep_days
+
+    now = datetime.now().timestamp()
+    vitals_cutoff = int(now - vitals_days * 86400)
+    movement_cutoff = int(now - movement_days * 86400)
+    sleep_cutoff = int(now - sleep_days * 86400)
+
+    cursor = conn.cursor()
+    result = {'vitals': 0, 'movement': 0, 'sleep_records': 0}
+    try:
+        logger.warning(
+            f'Pruning metrics: vitals<{vitals_days}d movement<{movement_days}d sleep<{sleep_days}d'
+        )
+        cursor.execute('DELETE FROM vitals WHERE timestamp < ?', (vitals_cutoff,))
+        result['vitals'] = cursor.rowcount if cursor.rowcount is not None else 0
+        cursor.execute('DELETE FROM movement WHERE timestamp < ?', (movement_cutoff,))
+        result['movement'] = cursor.rowcount if cursor.rowcount is not None else 0
+        cursor.execute('DELETE FROM sleep_records WHERE entered_bed_at < ?', (sleep_cutoff,))
+        result['sleep_records'] = cursor.rowcount if cursor.rowcount is not None else 0
+        try:
+            cursor.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            cursor.execute('VACUUM')
+        except sqlite3.Error as vacuum_error:
+            logger.warning(f'VACUUM after prune failed (non-fatal): {vacuum_error}')
+        logger.warning(f'Prune complete: {result}')
+    except sqlite3.Error as error:
+        logger.error(f'Prune failed: {error}')
+    finally:
+        cursor.close()
+    return result
 
 
 def custom_serializer(obj):
@@ -86,6 +140,18 @@ def insert_vitals(data: dict):
         cursor.execute(sql, data)
     except sqlite3.Error as error:
         logger.error(error)
+        if _is_disk_full_error(error):
+            # Free space and retry once so the stream can keep running
+            logger.warning('Disk/database full on vitals insert — running emergency prune')
+            prune_old_metrics(
+                vitals_days=max(7, VITALS_RETENTION_DAYS // 2),
+                movement_days=max(7, MOVEMENT_RETENTION_DAYS // 2),
+            )
+            try:
+                cursor.execute(sql, data)
+                logger.info('Vitals insert succeeded after emergency prune')
+            except sqlite3.Error as retry_error:
+                logger.error(f'Vitals insert still failing after prune: {retry_error}')
     finally:
         cursor.close()
 
@@ -175,3 +241,14 @@ def insert_movement_df(movement_df: pd.DataFrame):
     except Exception as error:
         logger.error('Failed to insert movement df!')
         logger.error(error)
+        if _is_disk_full_error(error):
+            logger.warning('Disk/database full on movement insert — running emergency prune')
+            prune_old_metrics(
+                vitals_days=max(7, VITALS_RETENTION_DAYS // 2),
+                movement_days=max(7, MOVEMENT_RETENTION_DAYS // 2),
+            )
+            try:
+                movement_df.to_sql("movement", conn, if_exists='append', index=False)
+                logger.info('Movement insert succeeded after emergency prune')
+            except Exception as retry_error:
+                logger.error(f'Movement insert still failing after prune: {retry_error}')

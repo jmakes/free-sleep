@@ -49,7 +49,9 @@ def _get_logger_instance(name: str = None) -> Tuple[BaseLogger, LoggerName]:
 
 
 def _get_log_level():
-    return logging.INFO if os.getenv('LOG_LEVEL') == 'INFO' else logging.DEBUG
+    # Default INFO on device to reduce disk I/O; set LOG_LEVEL=DEBUG when needed
+    level = os.getenv('LOG_LEVEL', 'INFO').upper()
+    return logging.DEBUG if level == 'DEBUG' else logging.INFO
 
 
 class FixedWidthFormatter(logging.Formatter):
@@ -106,9 +108,14 @@ def _build_logger(logger: BaseLogger, name: LoggerName):
         logger.env = 'local'
         logger.folder_path = '/Users/ds/free-sleep/server/free-sleep-data/'
 
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(_get_console_handler())
-    logger.addHandler(_get_file_handler(logger.folder_path, name))
+    log_level = _get_log_level()
+    logger.setLevel(log_level)
+    console_handler = _get_console_handler()
+    console_handler.setLevel(log_level)
+    file_handler = _get_file_handler(logger.folder_path, name)
+    file_handler.setLevel(log_level)
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
 
 
 

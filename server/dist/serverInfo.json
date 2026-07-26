@@ -1,8 +1,8 @@
 {
-  "version": "2.1.5-jmakes.0",
+  "version": "2.1.5-jmakes.1",
   "branch": "main",
   "githubOwner": "jmakes",
   "githubRepo": "free-sleep",
   "updateCheckUrl": "https://raw.githubusercontent.com/jmakes/free-sleep/main/server/src/serverInfo.json",
-  "commit": "8bed156dbc3fad267f04e0b0270d4a827a38705f"
+  "commit": "4a47fe48f462bc495286b31ad7d379f0d99ad992"
 }

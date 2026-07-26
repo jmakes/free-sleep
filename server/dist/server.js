@@ -13,6 +13,7 @@ import serverStatus from './serverStatus.js';
 import { prisma } from './db/prisma.js';
 import { setupSentryTags } from './setupSentryTags.js';
 import { loadWifiSignalStrength } from './8sleep/wifiSignalStrength.js';
+import { startMetricsRetentionJob } from './jobs/metricsRetentionJob.js';
 const port = 3000;
 const app = express();
 let server;
@@ -117,6 +118,8 @@ async function startServer() {
     }
     void loadWifiSignalStrength();
     setInterval(loadWifiSignalStrength, 10_000);
+    // Prune high-volume SQLite metrics so /persistent does not fill up
+    startMetricsRetentionJob();
     // Register signal handlers for graceful shutdown
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
