@@ -53,7 +53,7 @@ export default function UpdateFreeSleepButton() {
       try {
         const deviceStatus = await getDeviceStatus();
         if (deviceStatus.data.freeSleep.version !== latestVersion) {
-          setUpdateTitle('Update failed- Reach out on Discord for help!');
+          setUpdateTitle('Update failed — check logs with fs-debug or reinstall from your fork.');
           setUpdateMessage(`Latest version: ${latestVersion} -- Current version: ${deviceStatus.data.freeSleep.version}`);
         } else {
           setUpdateTitle('Update completed!');

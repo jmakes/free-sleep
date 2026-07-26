@@ -31,6 +31,23 @@ echo "==> Generating Prisma client"
 npm run generate:local 2>/dev/null || npm run generate || true
 
 echo ""
+echo "==> Stamping git commit into serverInfo.json"
+COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
+if [ -n "$COMMIT" ]; then
+  node -e '
+    const fs = require("fs");
+    const path = process.argv[1];
+    const commit = process.argv[2];
+    const info = JSON.parse(fs.readFileSync(path, "utf8"));
+    info.commit = commit;
+    fs.writeFileSync(path, JSON.stringify(info, null, 2) + "\n");
+    console.log("    commit:", commit);
+  ' "$ROOT_DIR/server/src/serverInfo.json" "$COMMIT"
+else
+  echo "    WARNING: could not resolve git HEAD; leaving serverInfo.commit unchanged"
+fi
+
+echo ""
 echo "==> Building server (tsc, no Sentry upload)"
 npm run build:pr
 # JSON imports are loaded at runtime; ensure dist has the latest serverInfo.json

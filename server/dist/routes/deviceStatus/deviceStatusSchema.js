@@ -31,6 +31,9 @@ export const DeviceStatusSchema = z.object({
     freeSleep: z.object({
         version: z.string(),
         branch: z.string(),
+        commit: z.string().optional(),
+        githubOwner: z.string().optional(),
+        githubRepo: z.string().optional(),
     }),
     wifiStrength: z.number(),
 }).strict();

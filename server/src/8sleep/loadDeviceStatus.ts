@@ -179,6 +179,9 @@ export async function loadDeviceStatus(response: string, getGestures: boolean): 
     freeSleep: {
       version: serverInfo.version,
       branch: serverInfo.branch,
+      commit: 'commit' in serverInfo ? serverInfo.commit : undefined,
+      githubOwner: 'githubOwner' in serverInfo ? serverInfo.githubOwner : undefined,
+      githubRepo: 'githubRepo' in serverInfo ? serverInfo.githubRepo : undefined,
     },
     waterLevel: rawDeviceData.waterLevel,
     isPriming: rawDeviceData.priming === 'true',

@@ -3,5 +3,6 @@
   "branch": "main",
   "githubOwner": "jmakes",
   "githubRepo": "free-sleep",
-  "updateCheckUrl": "https://raw.githubusercontent.com/jmakes/free-sleep/main/server/src/serverInfo.json"
+  "updateCheckUrl": "https://raw.githubusercontent.com/jmakes/free-sleep/main/server/src/serverInfo.json",
+  "commit": "b52bea1aa23ad750e4b2da567819cf4af8ed631c"
 }
