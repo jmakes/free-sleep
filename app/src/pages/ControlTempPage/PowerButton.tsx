@@ -44,11 +44,16 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
     setDeviceStatus(deviceStatus);
     postDeviceStatus(deviceStatus)
       .then(() => {
-        // Wait 1 second before refreshing the device status
+        // Wait for franken to apply LEFT/RIGHT_TEMP_DURATION before refresh
         return new Promise((resolve) => setTimeout(resolve, 1_000));
       })
       .then(() => refetch())
-      .then((data) => setDeviceStatus(data.data))
+      .then((result) => {
+        // react-query refetch() resolves to { data, error, ... } — data is DeviceStatus
+        if (result?.data) {
+          setDeviceStatus(result.data);
+        }
+      })
       .catch(error => {
         console.error(error);
       })

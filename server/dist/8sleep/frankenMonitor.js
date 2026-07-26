@@ -52,13 +52,24 @@ export class FrankenMonitor {
         recordGestureResult(side, gesture, actionResult);
         logger.info(actionResult.message);
     }
+    /**
+     * Only treat a real counter *increase* as a tap.
+     * Do not fire on undefined→N (first sample / flaky DEVICE_STATUS fields) or N→undefined.
+     * Firing on those caused accidental power-offs when tripleTap maps to power off.
+     */
+    isCounterIncrease(previous, next) {
+        if (typeof previous !== 'number' || typeof next !== 'number')
+            return false;
+        if (!Number.isFinite(previous) || !Number.isFinite(next))
+            return false;
+        return next > previous;
+    }
     async processGesturesForSide(nextDeviceStatus, side) {
         try {
             for (const gesture of GestureSchema.options) {
                 const previous = this.deviceStatus?.[side]?.taps?.[gesture];
                 const next = nextDeviceStatus[side]?.taps?.[gesture];
-                // Counter present and increased (or newly appeared)
-                if (next !== undefined && next !== previous) {
+                if (this.isCounterIncrease(previous, next)) {
                     await this.processGesture(side, gesture, nextDeviceStatus);
                 }
             }
@@ -70,6 +81,12 @@ export class FrankenMonitor {
     async processGestures(nextDeviceStatus) {
         if (!this.deviceStatus) {
             logger.warn('Missing current deviceStatus, exiting...');
+            return;
+        }
+        // Need a prior sample that already included tap counters, otherwise any first
+        // non-zero reading would look like a "change" and fire every mapping at once.
+        const hadTapBaseline = this.deviceStatus.left.taps !== undefined || this.deviceStatus.right.taps !== undefined;
+        if (!hadTapBaseline) {
             return;
         }
         if (this.handlingGesture) {
