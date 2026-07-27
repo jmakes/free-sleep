@@ -38,10 +38,12 @@ router.get('/probe', async (_req, res) => {
              */
             dismissAlarm: snapshot?.tapLikeKeys?.dismissAlarm ?? null,
             sChannel: snapshot?.sChannel ?? {},
+            singleTapSupported: snapshot?.singleTapSupported ?? false,
+            singleTapNote: snapshot?.singleTapNote,
             snapshot,
-            hint: 'Multi-tap stamps are Unix times of last event. Single-tap the cover, wait 1s, call again. ' +
-                'Watch dismissAlarm and sChannel — if either changes, free-sleep maps it to singleTap (−1°F by default). ' +
-                'OEM may only update dismissAlarm while an alarm is actively vibrating.',
+            hint: 'double/triple/quad are last-event Unix timestamps (0 = never). ' +
+                'Single-tap is not available on Pod 4 DEVICE_STATUS for normal taps; dismissAlarm does not change when idle. ' +
+                'Map actions to double/triple/quad instead.',
         });
     }
     catch (error) {

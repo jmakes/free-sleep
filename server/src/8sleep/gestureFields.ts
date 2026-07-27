@@ -3,43 +3,32 @@ import { Gesture, GestureSchema } from '../db/settingsSchema.js';
 import { Side } from '../db/schedulesSchema.js';
 
 /**
- * OEM / firmware may use different key names for the same multi-tap counters.
+ * Pod 4 DEVICE_STATUS (observed on hardware):
  *
- * Pod 4 DEVICE_STATUS (observed):
- *   doubleTap/tripleTap/quadTap = {"l":N,"r":N,"s":N}
- *   where l/r are last-event Unix timestamps (0 = never), not simple +1 counters.
- *   `s` is present but has been 0 in samples so far.
- *   dismissAlarm is a separate key — likely single-tap / alarm-snooze path.
+ *   doubleTap / tripleTap / quadTap = {"l":TS,"r":TS,"s":0}
+ *     - l/r are last-event Unix timestamps (0 = never on that side)
+ *     - s is always 0 in samples — not used for single-tap
+ *
+ *   dismissAlarm = {"l":TS,"r":TS,"s":0}
+ *     - Present, but does NOT update on normal single-taps (stays frozen)
+ *     - Likely only for OEM alarm-dismiss while an alarm is ringing
+ *     - NOT used as singleTap input (would be a false signal)
+ *
+ * There is no singleTap key and no field that increments on a normal single tap.
+ * Free-sleep therefore cannot receive single-tap for temp control on Pod 4.
  */
 export const GESTURE_FIELD_ALIASES: Record<Gesture, string[]> = {
+  // Kept for completeness if a future firmware adds a real field
   singleTap: [
     'singleTap',
     'single_tap',
     'single',
-    'tap',
-    'Tap',
     'oneTap',
     'one_tap',
-    'tapCount',
-    'coverTap',
-    'cover_tap',
-    'alarmTap',
-    'alarm_tap',
-    'snoozeTap',
-    'snooze_tap',
-    // OEM alarm snooze / single-tap candidate (present on Pod 4)
-    'dismissAlarm',
-    'dismiss_alarm',
   ],
   doubleTap: ['doubleTap', 'double_tap', 'double'],
   tripleTap: ['tripleTap', 'triple_tap', 'triple'],
   quadTap: ['quadTap', 'quad_tap', 'quad', 'quadrupleTap', 'quadruple_tap'],
-};
-
-/** Side-specific integer counters sometimes appear instead of JSON {l,r} blobs */
-const SIDE_SPECIFIC_SINGLE_ALIASES: Record<Side, string[]> = {
-  left: ['leftTap', 'left_tap', 'leftSingleTap', 'left_single_tap', 'lTap', 'LTap'],
-  right: ['rightTap', 'right_tap', 'rightSingleTap', 'right_single_tap', 'rTap', 'RTap'],
 };
 
 export type SideTapCounters = Partial<Record<Gesture, number>>;
@@ -47,15 +36,14 @@ export type SideTapCounters = Partial<Record<Gesture, number>>;
 export type GestureFieldSnapshot = {
   timestamp: string;
   allKeys: string[];
-  /** Keys that look gesture/alarm related (for discovery) */
   tapLikeKeys: Record<string, string>;
-  /** Normalized counters / last-event timestamps we extracted */
   left: SideTapCounters;
   right: SideTapCounters;
-  /** Alias that supplied each canonical gesture, if any */
   resolvedAliases: Partial<Record<Gesture, string>>;
-  /** Raw `s` channel from multi-tap JSON blobs (unknown meaning; logged for discovery) */
   sChannel: { doubleTap?: number; tripleTap?: number; quadTap?: number };
+  /** Explicit note for API consumers */
+  singleTapSupported: boolean;
+  singleTapNote: string;
 };
 
 let lastSnapshot: GestureFieldSnapshot | null = null;
@@ -65,10 +53,6 @@ export function getLastGestureFieldSnapshot(): GestureFieldSnapshot | null {
   return lastSnapshot;
 }
 
-/**
- * Split DEVICE_STATUS text into key/value pairs.
- * Handles both `key = value` and `key=value`.
- */
 export function parseDeviceStatusLines(response: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const rawLine of response.split(/\r?\n/)) {
@@ -112,9 +96,8 @@ function isTapLikeKey(key: string): boolean {
 }
 
 /**
- * Extract left/right gesture event stamps from a raw DEVICE_STATUS key map.
- * Values are often last-event Unix timestamps (0 = never), not +1 counters.
- * Detection still uses next > previous.
+ * Extract left/right multi-tap last-event timestamps from DEVICE_STATUS.
+ * Does not invent single-tap from dismissAlarm (stale / alarm-only on Pod 4).
  */
 export function extractGestureCounters(rawMap: Record<string, string>): GestureFieldSnapshot {
   const left: SideTapCounters = {};
@@ -128,14 +111,11 @@ export function extractGestureCounters(rawMap: Record<string, string>): GestureF
       tapLikeKeys[key] = value;
     }
   }
-
-  // Always surface dismissAlarm even if empty — critical for single-tap discovery
   if (rawMap.dismissAlarm !== undefined) {
     tapLikeKeys.dismissAlarm = rawMap.dismissAlarm;
   }
 
   for (const gesture of GestureSchema.options) {
-    // singleTap is handled specially below (dismissAlarm + s channel)
     if (gesture === 'singleTap') continue;
 
     for (const alias of GESTURE_FIELD_ALIASES[gesture]) {
@@ -148,7 +128,6 @@ export function extractGestureCounters(rawMap: Record<string, string>): GestureF
       left[gesture] = counters.l;
       right[gesture] = counters.r;
       resolvedAliases[gesture] = alias;
-
       if (gesture === 'doubleTap' || gesture === 'tripleTap' || gesture === 'quadTap') {
         sChannel[gesture] = counters.s;
       }
@@ -156,64 +135,19 @@ export function extractGestureCounters(rawMap: Record<string, string>): GestureF
     }
   }
 
-  // --- singleTap resolution (priority order) ---
-
-  // 1) Explicit singleTap-like keys / dismissAlarm with {l,r} or {l,r,s}
+  // Only map a real singleTap-named field if firmware ever adds one
   for (const alias of GESTURE_FIELD_ALIASES.singleTap) {
     const raw = rawMap[alias];
     if (raw === undefined) continue;
-
     const counters = parseSideCounters(raw);
-    if (counters) {
-      left.singleTap = counters.l;
-      right.singleTap = counters.r;
-      resolvedAliases.singleTap = alias;
-      break;
-    }
-
-    // Plain integer event stamp (side unknown) — apply to both so either side can fire
-    if (/^-?\d+$/.test(raw.trim())) {
-      const value = Number(raw.trim());
-      left.singleTap = value;
-      right.singleTap = value;
-      resolvedAliases.singleTap = `${alias}(scalar)`;
-      break;
-    }
+    if (!counters) continue;
+    left.singleTap = counters.l;
+    right.singleTap = counters.r;
+    resolvedAliases.singleTap = alias;
+    break;
   }
 
-  // 2) Side-specific integer fields
-  if (left.singleTap === undefined || right.singleTap === undefined) {
-    for (const side of ['left', 'right'] as Side[]) {
-      if (side === 'left' && left.singleTap !== undefined) continue;
-      if (side === 'right' && right.singleTap !== undefined) continue;
-
-      for (const alias of SIDE_SPECIFIC_SINGLE_ALIASES[side]) {
-        const raw = rawMap[alias];
-        if (raw === undefined) continue;
-        const value = Number(raw);
-        if (!Number.isFinite(value)) continue;
-        if (side === 'left') left.singleTap = value;
-        else right.singleTap = value;
-        if (!resolvedAliases.singleTap) resolvedAliases.singleTap = alias;
-        break;
-      }
-    }
-  }
-
-  // 3) Use the `s` channel from multi-tap blobs as single-tap stamps if non-zero / changing
-  //    Observed shape: doubleTap={"l":0,"r":TS,"s":0}. If firmware ever stamps single taps
-  //    into `s`, we pick it up here (prefer doubleTap's s, then triple, then quad).
-  if (left.singleTap === undefined && right.singleTap === undefined) {
-    const sCandidates = [sChannel.doubleTap, sChannel.tripleTap, sChannel.quadTap];
-    const sValue = sCandidates.find((value) => value !== undefined);
-    if (sValue !== undefined) {
-      // `s` is a single shared channel in the blob — mirror to both sides.
-      // processGestures will only fire the side whose stamp increased.
-      left.singleTap = sValue;
-      right.singleTap = sValue;
-      resolvedAliases.singleTap = 's-channel(from multi-tap JSON)';
-    }
-  }
+  const singleTapSupported = resolvedAliases.singleTap !== undefined;
 
   const snapshot: GestureFieldSnapshot = {
     timestamp: new Date().toISOString(),
@@ -223,6 +157,12 @@ export function extractGestureCounters(rawMap: Record<string, string>): GestureF
     right,
     resolvedAliases,
     sChannel,
+    singleTapSupported,
+    singleTapNote: singleTapSupported
+      ? `Single-tap field: ${resolvedAliases.singleTap}`
+      : 'Pod 4 dac/DEVICE_STATUS does not report normal single-taps. ' +
+        'dismissAlarm stays frozen during idle single-taps (OEM snooze is likely cover-local while an alarm rings). ' +
+        'Use double/triple/quad for free-sleep control.',
   };
 
   lastSnapshot = snapshot;
@@ -230,17 +170,11 @@ export function extractGestureCounters(rawMap: Record<string, string>): GestureF
   if (!loggedDiscovery) {
     loggedDiscovery = true;
     logger.info(
-      `Gesture field discovery: tapLikeKeys=${JSON.stringify(tapLikeKeys)} ` +
-      `resolved=${JSON.stringify(resolvedAliases)} sChannel=${JSON.stringify(sChannel)}`
+      `Gesture field discovery: multiTap aliases=${JSON.stringify(resolvedAliases)} ` +
+      `dismissAlarm=${rawMap.dismissAlarm ?? '(none)'}`
     );
-    if (!resolvedAliases.singleTap) {
-      logger.warn(
-        'No single-tap field found yet. On Pod 4, multi-tap uses doubleTap/tripleTap/quadTap ' +
-        'with {l,r,s} timestamps. dismissAlarm is present — watch it via GET /api/gestures/probe ' +
-        'while single-tapping. OEM alarm-snooze may only update fields while an alarm is ringing.'
-      );
-    } else {
-      logger.info(`Single-tap field resolved via "${resolvedAliases.singleTap}"`);
+    if (!singleTapSupported) {
+      logger.warn(snapshot.singleTapNote);
     }
   }
 

@@ -21,22 +21,20 @@ const defaultSideSettings: SideSettings = {
     }
   },
   taps: {
-    // Defaults match common bed-side preferences:
-    // 1× cool, 2× warm, 3× power off, 4× lock current temp into schedule (all days)
+    // Pod 4 dac does not expose normal single-taps (see gestureFields.ts).
+    // Practical defaults: double = cool, triple = warm, quad = save to schedule.
     singleTap: {
+      type: 'none',
+    },
+    doubleTap: {
       type: 'temperature',
       change: 'decrement',
       amount: 1,
     },
-    doubleTap: {
+    tripleTap: {
       type: 'temperature',
       change: 'increment',
       amount: 1,
-    },
-    // Power-off via triple-tap temporarily disabled (false positives / diagnosis).
-    // Re-enable after tap counters are proven stable on-device.
-    tripleTap: {
-      type: 'none',
     },
     quadTap: {
       type: 'scheduleApply',

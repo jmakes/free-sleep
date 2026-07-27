@@ -240,16 +240,16 @@ Re-test install/update after merging anything under `scripts/`.
 
 Per-side mappings live under **Settings → Side settings** (with away mode / name).
 
-| Gesture | Default action |
-|---------|----------------|
-| Single | −1°F |
-| Double | +1°F |
-| Triple | Power off that side |
+| Gesture | Default action (Pod 4) |
+|---------|-------------------------|
+| Single | *Not available over dac* (OEM snooze is cover-local while alarm rings) |
+| Double | −1°F |
+| Triple | +1°F |
 | Quad | Write current target temp into the active schedule slot for **all days** |
 
-- Haptic ack: same side as the tap, ~2 pulses/second (1–4 pulses matching the gesture).
-- Toasts: brief on-screen confirmation when a tap is handled.
-- Single-tap depends on Pod firmware reporting `singleTap` counters; double/triple/quad are confirmed on Pod 4/5.
+- Haptic ack: N short ticks on the same side for an N-tap gesture.
+- Toasts: on-screen confirmation when a multi-tap is handled.
+- Probe: `GET /api/gestures/probe` — multi-tap stamps are last-event Unix times.
 
 ## Resource management (this fork)
 

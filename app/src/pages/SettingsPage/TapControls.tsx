@@ -103,7 +103,8 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
         Cover taps
       </Typography>
       <Typography variant="caption" color="text.secondary" display="block" sx={ { mb: 1 } }>
-        Vibration confirms on the same side (~2 pulses/sec). Single-tap requires Pod firmware support.
+        Vibration: N short ticks for N-tap (same side). Pod 4 does not report normal single-taps over
+        the local API — use double/triple/quad. OEM single-tap snooze is cover-side while an alarm rings.
       </Typography>
 
       { GESTURES.map(({ key, label }) => {
