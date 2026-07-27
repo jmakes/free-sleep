@@ -76,10 +76,9 @@ export class FrankenMonitor {
 
   private async processGesturesForSide(nextDeviceStatus: DeviceStatus, side: Side) {
     try {
-      // Prefer higher-count gestures first so a triple doesn't also fire single/double
-      // if firmware stamps multiple fields. singleTap (dismissAlarm) is still checked.
-      const order: Gesture[] = ['quadTap', 'tripleTap', 'doubleTap', 'singleTap'];
-      let handled = false;
+      // Higher-count first so a triple/quad doesn't also fire double if firmware
+      // stamps multiple multi-tap fields. Single-tap is not mapped (Pod 4 dac).
+      const order: Gesture[] = ['quadTap', 'tripleTap', 'doubleTap'];
       for (const gesture of order) {
         const previous = this.deviceStatus?.[side]?.taps?.[gesture];
         const next = nextDeviceStatus[side]?.taps?.[gesture];
@@ -88,16 +87,8 @@ export class FrankenMonitor {
             `Tap event: ${side}.${gesture} ${previous} → ${next}`
           );
           await this.processGesture(side, gesture, nextDeviceStatus);
-          handled = true;
           // One gesture per side per poll — multi-tap timestamps can be close
           break;
-        }
-      }
-      // Log singleTap stamps when present so we can see dismissAlarm activity
-      if (!handled) {
-        const single = nextDeviceStatus[side]?.taps?.singleTap;
-        if (single !== undefined && single > 0) {
-          logger.debug(`${side}.singleTap stamp=${single}`);
         }
       }
     } catch (error) {

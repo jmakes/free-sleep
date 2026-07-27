@@ -12,22 +12,14 @@
     }
   }
 
+  // handle1 = current (display), handle2 = target (interactive).
+  // Always show the target knob when enabled; current is arc endpoint only.
   &:not(.Disabled) circle:nth-last-child(1) {
-    display: none;
-  }
-
-  &:not(.Disabled) circle:nth-last-child(2) {
     display: block;
   }
 
-  &.Heating {
-    &:not(.Disabled) circle:nth-last-child(1) {
-      display: block;
-    }
-
-    &:not(.Disabled) circle:nth-last-child(2) {
-      display: none;
-    }
+  &:not(.Disabled) circle:nth-last-child(2) {
+    display: none;
   }
 }
 

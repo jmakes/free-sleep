@@ -207,21 +207,19 @@ const createSettings = (): Settings => ({
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },
     },
     taps: {
-      singleTap: {
+      doubleTap: {
         type: 'temperature',
         change: 'decrement',
         amount: 1,
       },
-      doubleTap: {
+      tripleTap: {
         type: 'temperature',
         change: 'increment',
         amount: 1,
       },
-      tripleTap: {
-        type: 'none',
-      },
       quadTap: {
-        type: 'scheduleApply',
+        type: 'power',
+        action: 'off',
       },
     }
   },
@@ -233,21 +231,19 @@ const createSettings = (): Settings => ({
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },
     },
     taps: {
-      singleTap: {
+      doubleTap: {
         type: 'temperature',
         change: 'decrement',
         amount: 1,
       },
-      doubleTap: {
+      tripleTap: {
         type: 'temperature',
         change: 'increment',
         amount: 1,
       },
-      tripleTap: {
-        type: 'none',
-      },
       quadTap: {
-        type: 'scheduleApply',
+        type: 'power',
+        action: 'off',
       },
     }
   },

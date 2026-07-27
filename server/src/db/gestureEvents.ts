@@ -9,12 +9,17 @@ export type GestureEvent = {
   gesture: Gesture;
   message: string;
   success: boolean;
+  /** Exact target after the action — UI should apply this to avoid gauge jumps */
+  targetTemperatureF?: number;
+  isOn?: boolean;
 };
 
 const MAX_EVENTS = 30;
 const events: GestureEvent[] = [];
 
-export function pushGestureEvent(event: Omit<GestureEvent, 'id' | 'timestamp'> & { timestamp?: string }) {
+export function pushGestureEvent(
+  event: Omit<GestureEvent, 'id' | 'timestamp'> & { timestamp?: string }
+) {
   const full: GestureEvent = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     timestamp: event.timestamp ?? moment().toISOString(),
@@ -22,6 +27,8 @@ export function pushGestureEvent(event: Omit<GestureEvent, 'id' | 'timestamp'> &
     gesture: event.gesture,
     message: event.message,
     success: event.success,
+    targetTemperatureF: event.targetTemperatureF,
+    isOn: event.isOn,
   };
   events.unshift(full);
   if (events.length > MAX_EVENTS) {

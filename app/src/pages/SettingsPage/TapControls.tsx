@@ -16,7 +16,6 @@ import { Settings, TapConfigType, Gesture } from '@api/settingsSchema.ts';
 import { Side, useAppStore } from '@state/appStore.tsx';
 
 const GESTURES: { key: Gesture; label: string }[] = [
-  { key: 'singleTap', label: 'Single tap' },
   { key: 'doubleTap', label: 'Double tap' },
   { key: 'tripleTap', label: 'Triple tap' },
   { key: 'quadTap', label: 'Quadruple tap' },
@@ -82,12 +81,11 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
   const taps = settings?.[side]?.taps;
 
   const updateTap = (gesture: Gesture, config: TapConfigType) => {
-    // Send full taps map so the server can replace the gesture object cleanly
+    // Send full multi-tap map so the server can replace cleanly
     const nextTaps = {
-      singleTap: taps?.singleTap ?? defaultConfigForType('temperature'),
       doubleTap: taps?.doubleTap ?? defaultConfigForType('temperature'),
-      tripleTap: taps?.tripleTap ?? defaultConfigForType('none'),
-      quadTap: taps?.quadTap ?? defaultConfigForType('scheduleApply'),
+      tripleTap: taps?.tripleTap ?? defaultConfigForType('temperature'),
+      quadTap: taps?.quadTap ?? defaultConfigForType('power'),
       [gesture]: config,
     };
     updateSettings({
@@ -103,8 +101,9 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
         Cover taps
       </Typography>
       <Typography variant="caption" color="text.secondary" display="block" sx={ { mb: 1 } }>
-        Vibration: N short ticks for N-tap (same side). Pod 4 does not report normal single-taps over
-        the local API — use double/triple/quad. OEM single-tap snooze is cover-side while an alarm rings.
+        Defaults: double −1°, triple +1°, quad power off (when on). Any tap turns the side on
+        if it is off. Haptics: N short ticks for an N-tap. Pod 4 does not report normal single-taps
+        over the local API.
       </Typography>
 
       { GESTURES.map(({ key, label }) => {

@@ -67,8 +67,6 @@ export async function playHapticAck(side: Side, pulses: number): Promise<void> {
 
 export function pulseCountForGesture(gesture: string): number {
   switch (gesture) {
-    case 'singleTap':
-      return 1;
     case 'doubleTap':
       return 2;
     case 'tripleTap':
@@ -76,6 +74,6 @@ export function pulseCountForGesture(gesture: string): number {
     case 'quadTap':
       return 4;
     default:
-      return 1;
+      return 2;
   }
 }

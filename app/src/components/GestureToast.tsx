@@ -2,19 +2,52 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Snackbar } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchRecentGestures, GestureEvent } from '@api/gestures.ts';
+import { DeviceStatus } from '@api/deviceStatusSchema.ts';
+import { useControlTempStore } from '../pages/ControlTempPage/controlTempStore.tsx';
 
 /**
  * Polls for cover-tap gesture events and shows a brief toast.
- * On new gestures, refreshes device status so live temp/power UI updates promptly.
+ * Applies targetTemperatureF / isOn from the event immediately so the gauge
+ * does not wait on (or fight with) a full deviceStatus refetch.
  */
 export default function GestureToast() {
   const queryClient = useQueryClient();
+  const setDeviceStatus = useControlTempStore((state) => state.setDeviceStatus);
   const lastSeenId = useRef<string | undefined>(undefined);
   const [queue, setQueue] = useState<GestureEvent[]>([]);
   const [current, setCurrent] = useState<GestureEvent | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
+    const applyGestureToUi = (event: GestureEvent) => {
+      if (event.targetTemperatureF === undefined && event.isOn === undefined) {
+        return;
+      }
+      const sidePatch: Partial<DeviceStatus['left']> = {};
+      if (event.targetTemperatureF !== undefined) {
+        sidePatch.targetTemperatureF = event.targetTemperatureF;
+      }
+      if (event.isOn !== undefined) {
+        sidePatch.isOn = event.isOn;
+      }
+      const patch = { [event.side]: sidePatch } as Partial<DeviceStatus>;
+
+      // Immediate gauge / power update (store drives the slider)
+      setDeviceStatus(patch);
+
+      // Keep react-query cache in sync so props like currentTargetTemp match
+      queryClient.setQueryData<DeviceStatus>(['useDeviceStatus'], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          [event.side]: {
+            ...old[event.side],
+            ...sidePatch,
+          },
+        };
+      });
+    };
 
     const poll = async () => {
       try {
@@ -33,9 +66,16 @@ export default function GestureToast() {
         lastSeenId.current = newestFirst[0].id;
         setQueue((prev) => [...prev, ...fresh]);
 
-        // Refresh live device state (temp, power) after a tap-driven change
-        void queryClient.invalidateQueries({ queryKey: ['useDeviceStatus'] });
-        // Quad-tap / scheduleApply may have rewritten schedulesDB
+        for (const event of fresh) {
+          applyGestureToUi(event);
+        }
+
+        // Delay refetch so franken target level has time to settle; avoids
+        // stomping the optimistic target with a stale DEVICE_STATUS read.
+        window.setTimeout(() => {
+          if (cancelled) return;
+          void queryClient.invalidateQueries({ queryKey: ['useDeviceStatus'] });
+        }, 1_200);
         if (fresh.some((event) => event.message.includes('schedule') || event.gesture === 'quadTap')) {
           void queryClient.invalidateQueries({ queryKey: ['useSchedules'] });
         }
@@ -54,7 +94,7 @@ export default function GestureToast() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [queryClient]);
+  }, [queryClient, setDeviceStatus]);
 
   useEffect(() => {
     if (current || queue.length === 0) return;

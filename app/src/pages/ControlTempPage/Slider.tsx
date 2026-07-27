@@ -18,6 +18,14 @@ type SliderProps = {
   displayCelsius: boolean;
 }
 
+/**
+ * Dual-handle arc: handle1 = live current temp (display only),
+ * handle2 = target temp (interactive).
+ *
+ * IMPORTANT: never write currentTemperatureF into targetTemperatureF.
+ * The library can fire onChange when values re-render after a gesture/
+ * refetch; if both handles mutate target, the gauge jumps to "currently at".
+ */
 export default function Slider({ isOn, currentTargetTemp, refetch, currentTemperatureF, displayCelsius }: SliderProps) {
   const { deviceStatus, setDeviceStatus } = useControlTempStore();
   const { isUpdating, setIsUpdating, side } = useAppStore();
@@ -26,7 +34,12 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
   const disabled = isUpdating || isInAwayMode || !isOn;
   const { width, ref } = useResizeDetector();
   const theme = useTheme();
-  const sliderColor = getTemperatureColor(deviceStatus?.[side]?.targetTemperatureF);
+  const sideStatus = deviceStatus?.[side];
+  const targetTemp = sideStatus?.targetTemperatureF ?? currentTargetTemp;
+  const liveTemp = sideStatus?.currentTemperatureF ?? currentTemperatureF;
+  const sliderColor = getTemperatureColor(targetTemp);
+  const isHeating = liveTemp < targetTemp;
+
   const handleControlFinished = async () => {
     if (!deviceStatus) return;
 
@@ -51,10 +64,12 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
 
   const arcBackgroundColor = theme.palette.grey[700];
 
-  const sideStatus = deviceStatus?.[side];
-  const minTemp = Math.min(sideStatus?.currentTemperatureF || 55, sideStatus?.targetTemperatureF || 55);
-  const maxTemp = Math.max(sideStatus?.currentTemperatureF || 55, sideStatus?.targetTemperatureF || 55);
-  const isHeating = (sideStatus?.currentTemperatureF ?? 55) < (sideStatus?.targetTemperatureF ?? 55);
+  const setTargetTemp = (value: number) => {
+    if (disabled) return;
+    const next = Math.round(value);
+    if (next === targetTemp) return;
+    setDeviceStatus({ [side]: { targetTemperatureF: next } });
+  };
 
   return (
     <div
@@ -77,31 +92,22 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
             axis: '-y'
           } }
           handle1={ {
-            value: minTemp,
-            onChange: (value) => {
-              if (disabled) return;
-              if (Math.round(value) !== deviceStatus?.[side]?.targetTemperatureF) {
-                setDeviceStatus({ [side]: { targetTemperatureF: Math.round(value) } });
-              }
-            },
-
+            // Live current temperature — display only, never writes target
+            value: liveTemp,
+            onChange: () => {},
           } }
           arcColor={ isOn ? sliderColor : arcBackgroundColor }
           arcBackgroundColor={ arcBackgroundColor }
           handle2={ {
-            value: maxTemp,
-            onChange: (value) => {
-              if (disabled) return;
-              if (Math.round(value) !== deviceStatus?.[side]?.targetTemperatureF) {
-                setDeviceStatus({ [side]: { targetTemperatureF: Math.round(value) } });
-              }
-            },
+            // Target temperature — the only interactive handle
+            value: targetTemp,
+            onChange: setTargetTemp,
           } }
           handleSize={ 8 }
         >
           <TemperatureLabel
             isOn={ isOn }
-            sliderTemp={ deviceStatus?.[side]?.targetTemperatureF || 55 }
+            sliderTemp={ targetTemp }
             sliderColor={ sliderColor }
             currentTargetTemp={ currentTargetTemp }
             currentTemperatureF={ currentTemperatureF }

@@ -5,9 +5,12 @@ export type GestureEvent = {
   id: string;
   timestamp: string;
   side: 'left' | 'right';
-  gesture: 'singleTap' | 'doubleTap' | 'tripleTap' | 'quadTap';
+  gesture: 'doubleTap' | 'tripleTap' | 'quadTap';
   message: string;
   success: boolean;
+  /** Exact target after the action — apply to gauge to avoid jumps */
+  targetTemperatureF?: number;
+  isOn?: boolean;
 };
 
 export const fetchRecentGestures = async (sinceId?: string) => {
