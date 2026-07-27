@@ -31,9 +31,17 @@ router.get('/probe', async (_req, res) => {
                 left: status.left.taps ?? {},
                 right: status.right.taps ?? {},
             },
+            /**
+             * Pod 4 multi-tap values are last-event Unix timestamps (0 = never), not +1 counters.
+             * dismissAlarm is the best single-tap / snooze candidate — watch it while single-tapping.
+             * sChannel is the unused `s` field inside double/triple/quad JSON blobs.
+             */
+            dismissAlarm: snapshot?.tapLikeKeys?.dismissAlarm ?? null,
+            sChannel: snapshot?.sChannel ?? {},
             snapshot,
-            hint: 'Single-tap the cover, wait 1s, call this again. Compare taps/snapshot.tapLikeKeys. ' +
-                'If a new key appears or a counter increases, free-sleep can map it to singleTap.',
+            hint: 'Multi-tap stamps are Unix times of last event. Single-tap the cover, wait 1s, call again. ' +
+                'Watch dismissAlarm and sChannel — if either changes, free-sleep maps it to singleTap (−1°F by default). ' +
+                'OEM may only update dismissAlarm while an alarm is actively vibrating.',
         });
     }
     catch (error) {
