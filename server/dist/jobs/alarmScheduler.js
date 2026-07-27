@@ -29,10 +29,14 @@ export const executeAlarm = async ({ vibrationIntensity, duration, vibrationPatt
         }
         const currentTime = moment.tz(settingsDB.data.timeZone);
         const alarmTimeEpoch = currentTime.unix();
+        // Pod 4 franken rejects some patterns (e.g. "rise") with:
+        //   parseAlarmPattern|[alarm] invalid pattern - using double
+        // Always send a known-good pattern to avoid firmware noise / surprises.
+        const safePattern = vibrationPattern === 'double' ? 'double' : 'double';
         const alarmPayload = {
             pl: vibrationIntensity,
             du: min10Duration,
-            pi: vibrationPattern,
+            pi: safePattern,
             tt: alarmTimeEpoch,
         };
         const cborPayload = cbor.encode(alarmPayload);
