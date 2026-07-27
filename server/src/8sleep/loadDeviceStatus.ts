@@ -8,14 +8,10 @@ import { constants } from 'fs';
 import _ from 'lodash';
 import serverInfo from '../serverInfo.json' with { type: 'json' };
 import { WIFI_SIGNAL_STRENGTH } from './wifiSignalStrength.js';
+import { extractGestureCounters, parseDeviceStatusLines } from './gestureFields.js';
 import { GestureSchema } from '../db/settingsSchema.js';
 
 
-
-type Gesture = {
-  l: number;
-  r: number;
-}
 const RawDeviceData = z.object({
   tgHeatLevelR: z.string().regex(/^-?\d+$/, { message: 'tgHeatLevelR must be a numeric value in a string' }),
   tgHeatLevelL: z.string().regex(/^-?\d+$/, { message: 'tgHeatLevelL must be a numeric value in a string' }),
@@ -27,21 +23,16 @@ const RawDeviceData = z.object({
   waterLevel: z.string().regex(/^(true|false)$/, { message: 'waterLevel must be "true" or "false"' }),
   priming: z.string().regex(/^(true|false)$/, { message: 'priming must be "true" or "false"' }),
   settings: z.string(),
-  singleTap: z.string().optional(),
-  doubleTap: z.string().optional(),
-  tripleTap: z.string().optional(),
-  quadTap: z.string().optional(),
-});
+}).passthrough(); // keep unknown keys (gesture fields vary by firmware)
 
 type RawDeviceDataType = z.infer<typeof RawDeviceData>;
 
 // Reads & validates the raw response data from socket and converts it to an object
 const parseRawDeviceData = (response: string): RawDeviceDataType => {
-  const rawDeviceData = Object.fromEntries(response.split('\n').map(l => l.split(' = ')));
+  const rawDeviceData = parseDeviceStatusLines(response);
 
   try {
-    RawDeviceData.parse(rawDeviceData);
-    return rawDeviceData;
+    return RawDeviceData.parse(rawDeviceData);
   } catch (error) {
     logger.error(error);
     throw error;
@@ -191,15 +182,17 @@ export async function loadDeviceStatus(response: string, getGestures: boolean): 
   };
   if (getGestures) {
     try {
+      // Pass full line map (includes passthrough keys) for flexible single-tap discovery
+      const snapshot = extractGestureCounters(rawDeviceData as Record<string, string>);
       deviceStatus.left.taps = {};
       deviceStatus.right.taps = {};
-      for (const field of GestureSchema.options) {
-        const data = rawDeviceData[field];
-        if (!data) continue;
-
-        const taps = JSON.parse(data) as Gesture;
-        deviceStatus.left.taps![field] = taps.l;
-        deviceStatus.right.taps![field] = taps.r;
+      for (const gesture of GestureSchema.options) {
+        if (snapshot.left[gesture] !== undefined) {
+          deviceStatus.left.taps[gesture] = snapshot.left[gesture];
+        }
+        if (snapshot.right[gesture] !== undefined) {
+          deviceStatus.right.taps[gesture] = snapshot.right[gesture];
+        }
       }
     } catch (error) {
       logger.error(error);

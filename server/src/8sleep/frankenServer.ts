@@ -89,7 +89,38 @@ export class Franken {
   public async getDeviceStatus(getGestures=false): Promise<DeviceStatus> {
     const command: FrankenCommand = 'DEVICE_STATUS';
     const commandNumber = frankenCommands[command];
-    const response = await this.sendMessage(commandNumber);
+    // Base status request (same as OEM free-sleep). Gesture counters are fields
+    // on this response when present — getGestures only controls whether we parse them.
+    const response = await this.sendMessage(
+      deviceStatusRequestArg ? `${commandNumber}\n${deviceStatusRequestArg}` : commandNumber
+    );
+
+    // One-time probe: if multi-tap exists but no single-tap-like field, try common
+    // DEVICE_STATUS args. Cache whichever form works so we don't add per-poll latency.
+    if (getGestures && !probedDeviceStatusArgs) {
+      probedDeviceStatusArgs = true;
+      const hasMultiTap = /doubleTap|tripleTap|quadTap/i.test(response);
+      const hasSingleLike = /singleTap|single_tap|(^|\n)tap\s*=|(^|\n)Tap\s*=|leftTap|rightTap|snoozeTap|alarmTap/i.test(response);
+      if (hasMultiTap && !hasSingleLike) {
+        for (const arg of ['1', 'true', 'gestures']) {
+          try {
+            const alt = await this.sendMessage(`${commandNumber}\n${arg}`);
+            if (/singleTap|single_tap|(^|\n)tap\s*=|leftTap|rightTap|snoozeTap|alarmTap/i.test(alt)) {
+              logger.info(`DEVICE_STATUS with arg "${arg}" exposed additional tap fields — using going forward`);
+              deviceStatusRequestArg = arg;
+              return await loadDeviceStatus(alt, getGestures);
+            }
+          } catch {
+            // ignore unsupported arg
+          }
+        }
+        logger.warn(
+          'DEVICE_STATUS multi-tap present but no single-tap field found (tried args 1/true/gestures). ' +
+          'Use GET /api/gestures/probe while single-tapping to discover the key name.'
+        );
+      }
+    }
+
     return await loadDeviceStatus(response, getGestures);
   }
 
@@ -158,6 +189,9 @@ function promiseWithTimeout<T>(promise: Promise<T>, onTimeout: () => Error) {
 let frankenServer: FrankenServer | undefined;
 let franken: Franken | undefined;
 let connectPromise: Promise<Franken> | undefined;
+/** Cached DEVICE_STATUS argument that exposes single-tap fields (null = bare command) */
+let deviceStatusRequestArg: string | null = null;
+let probedDeviceStatusArgs = false;
 
 function waitForFrankenWithTimeout(server: FrankenServer) {
   if (!FRANKEN_CONNECTION_TIMEOUT_MS) {

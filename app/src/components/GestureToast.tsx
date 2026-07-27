@@ -45,9 +45,10 @@ export default function GestureToast() {
     };
 
     void poll();
+    // Poll faster than franken gesture sampling so toasts feel snappy
     const interval = window.setInterval(() => {
       void poll();
-    }, 2_000);
+    }, 500);
 
     return () => {
       cancelled = true;

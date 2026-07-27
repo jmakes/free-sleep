@@ -107,7 +107,8 @@ export class FrankenMonitor {
         const franken = await connectFranken();
         this.deviceStatus = await franken.getDeviceStatus(false);
         let hasGestures = this.deviceStatus.coverVersion !== Version.Pod3;
-        let waitTime = hasGestures ? 2_000 : 60_000;
+        // 1s sampling balances responsiveness vs franken load (toasts poll separately at 500ms)
+        let waitTime = hasGestures ? 1_000 : 60_000;
         if (hasGestures) {
             this.deviceStatus = await franken.getDeviceStatus(true);
             logger.info(`Gestures supported for ${this.deviceStatus.coverVersion}`);
@@ -120,7 +121,7 @@ export class FrankenMonitor {
             try {
                 while (this.isRunning) {
                     hasGestures = this.deviceStatus.coverVersion !== Version.Pod3;
-                    waitTime = hasGestures ? 2_000 : 60_000;
+                    waitTime = hasGestures ? 1_000 : 60_000;
                     await wait(waitTime);
                     if (!this.isRunning)
                         break;
