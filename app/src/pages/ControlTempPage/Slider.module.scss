@@ -12,14 +12,26 @@
     }
   }
 
-  // handle1 = current (display), handle2 = target (interactive).
-  // Always show the target knob when enabled; current is arc endpoint only.
+  // Dual-handle: handle1 = min(live, target), handle2 = max(live, target).
+  // Show only the target knob (original free-sleep CSS).
+  // Cooling: target is min → handle1 → second-to-last circle
+  // Heating: target is max → handle2 → last circle
   &:not(.Disabled) circle:nth-last-child(1) {
-    display: block;
+    display: none;
   }
 
   &:not(.Disabled) circle:nth-last-child(2) {
-    display: none;
+    display: block;
+  }
+
+  &.Heating {
+    &:not(.Disabled) circle:nth-last-child(1) {
+      display: block;
+    }
+
+    &:not(.Disabled) circle:nth-last-child(2) {
+      display: none;
+    }
   }
 }
 

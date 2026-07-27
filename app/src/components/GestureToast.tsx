@@ -14,6 +14,8 @@ export default function GestureToast() {
   const queryClient = useQueryClient();
   const setDeviceStatus = useControlTempStore((state) => state.setDeviceStatus);
   const lastSeenId = useRef<string | undefined>(undefined);
+  /** True after the first successful poll (even if empty) */
+  const bootstrapped = useRef(false);
   const [queue, setQueue] = useState<GestureEvent[]>([]);
   const [current, setCurrent] = useState<GestureEvent | null>(null);
 
@@ -52,16 +54,23 @@ export default function GestureToast() {
     const poll = async () => {
       try {
         const events = await fetchRecentGestures(lastSeenId.current);
-        if (cancelled || events.length === 0) return;
+        if (cancelled) return;
 
-        // events are newest-first; take only new ones and enqueue oldest-first
-        const newestFirst = events;
-        if (!lastSeenId.current) {
-          // First poll: do not spam history; only remember the tip
-          lastSeenId.current = newestFirst[0]?.id;
+        // Bootstrap once: mark tip of any existing history, but do not toast it.
+        // Important: also bootstrap on an empty response so the first real gesture
+        // is not swallowed as "history" (that was why toast #1 never appeared).
+        if (!bootstrapped.current) {
+          bootstrapped.current = true;
+          if (events.length > 0) {
+            lastSeenId.current = events[0].id;
+          }
           return;
         }
 
+        if (events.length === 0) return;
+
+        // events are newest-first; enqueue oldest-first for the toast queue
+        const newestFirst = events;
         const fresh = [...newestFirst].reverse();
         lastSeenId.current = newestFirst[0].id;
         setQueue((prev) => [...prev, ...fresh]);

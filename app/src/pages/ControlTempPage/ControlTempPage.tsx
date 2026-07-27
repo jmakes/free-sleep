@@ -21,12 +21,14 @@ import { useTheme } from '@mui/material/styles';
 
 export default function ControlTempPage() {
   const { isError, refetch, data: deviceStatus } = useDeviceStatus();
+  const storeDeviceStatus = useControlTempStore(state => state.deviceStatus);
   const setDeviceStatus = useControlTempStore(state => state.setDeviceStatus);
   const { data: settings } = useSettings();
   const { isUpdating, side } = useAppStore();
   const theme = useTheme();
 
-  const sideStatus = deviceStatus?.[side];
+  // Prefer store (optimistic power/gesture updates) over query for live UI
+  const sideStatus = storeDeviceStatus?.[side] ?? deviceStatus?.[side];
   const isOn = sideStatus?.isOn || false;
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export default function ControlTempPage() {
           Try again
         </Button>
       ) : (
-        <PowerButton isOn={ sideStatus?.isOn || false } refetch={ refetch }/>
+        <PowerButton isOn={ isOn } refetch={ refetch }/>
       ) }
 
       <Box sx={ { display: 'flex', flexDirection: 'column', gap: 1 } }>

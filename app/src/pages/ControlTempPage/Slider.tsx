@@ -19,12 +19,15 @@ type SliderProps = {
 }
 
 /**
- * Dual-handle arc: handle1 = live current temp (display only),
- * handle2 = target temp (interactive).
+ * Dual-handle arc between live temp and target (original free-sleep look).
  *
- * IMPORTANT: never write currentTemperatureF into targetTemperatureF.
- * The library can fire onChange when values re-render after a gesture/
- * refetch; if both handles mutate target, the gauge jumps to "currently at".
+ * handle1 = min(live, target), handle2 = max(live, target).
+ * Only the handle that represents the *target* may write targetTemperatureF —
+ * the live-temp handle is display-only. Writing both caused random jumps.
+ *
+ * Remount when isOn flips so react-circular-slider-svg rebuilds geometry after
+ * the disabled → enabled transition (otherwise the first power-on arc is mangled
+ * until the next value change).
  */
 export default function Slider({ isOn, currentTargetTemp, refetch, currentTemperatureF, displayCelsius }: SliderProps) {
   const { deviceStatus, setDeviceStatus } = useControlTempStore();
@@ -39,6 +42,10 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
   const liveTemp = sideStatus?.currentTemperatureF ?? currentTemperatureF;
   const sliderColor = getTemperatureColor(targetTemp);
   const isHeating = liveTemp < targetTemp;
+  const minTemp = Math.min(liveTemp, targetTemp);
+  const maxTemp = Math.max(liveTemp, targetTemp);
+  // Library needs a concrete pixel size; width can be undefined on first paint
+  const sliderSize = width && width > 0 ? width : 320;
 
   const handleControlFinished = async () => {
     if (!deviceStatus) return;
@@ -50,7 +57,6 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
       }
     })
       .then(() => {
-        // Wait 1 second before refreshing the device status
         return new Promise((resolve) => setTimeout(resolve, 1_500));
       })
       .then(() => refetch())
@@ -68,6 +74,7 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
     if (disabled) return;
     const next = Math.round(value);
     if (next === targetTemp) return;
+    if (next < MIN_TEMP_F || next > MAX_TEMP_F) return;
     setDeviceStatus({ [side]: { targetTemperatureF: next } });
   };
 
@@ -76,12 +83,13 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
       ref={ ref }
       style={ { position: 'relative', display: 'inline-block', width: '100%', maxWidth: '400px' } }
     >
-      { /* Circular Slider */ }
+      { /* Circular Slider — key remounts cleanly on power transitions */ }
       <div className={ `${styles.Slider} ${disabled && styles.Disabled} ${isHeating && styles.Heating}` }>
         <CircularSliderWithChildren
+          key={ `gauge-${side}-${isOn ? 'on' : 'off'}` }
           disabled={ disabled }
           onControlFinished={ handleControlFinished }
-          size={ width }
+          size={ sliderSize }
           trackWidth={ 6 }
           minValue={ MIN_TEMP_F }
           maxValue={ MAX_TEMP_F }
@@ -92,16 +100,20 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
             axis: '-y'
           } }
           handle1={ {
-            // Live current temperature — display only, never writes target
-            value: liveTemp,
-            onChange: () => {},
+            value: minTemp,
+            onChange: (value) => {
+              // When cooling, target is the lower handle
+              if (!isHeating) setTargetTemp(value);
+            },
           } }
           arcColor={ isOn ? sliderColor : arcBackgroundColor }
           arcBackgroundColor={ arcBackgroundColor }
           handle2={ {
-            // Target temperature — the only interactive handle
-            value: targetTemp,
-            onChange: setTargetTemp,
+            value: maxTemp,
+            onChange: (value) => {
+              // When heating, target is the upper handle
+              if (isHeating) setTargetTemp(value);
+            },
           } }
           handleSize={ 8 }
         >
