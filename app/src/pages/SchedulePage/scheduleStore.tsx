@@ -16,14 +16,15 @@ type Validations = {
   // temperatureAdjustmentsValid: boolean,
 };
 
+/** Default: save applies to every day; user unchecks days for a one-off override. */
 export const DEFAULT_DAYS_SELECTED: DaysSelected = {
-  sunday: false,
-  monday: false,
-  tuesday: false,
-  wednesday: false,
-  thursday: false,
-  friday: false,
-  saturday: false,
+  sunday: true,
+  monday: true,
+  tuesday: true,
+  wednesday: true,
+  thursday: true,
+  friday: true,
+  saturday: true,
 };
 
 const DEFAULT_VALIDATIONS: Validations = {
@@ -57,6 +58,8 @@ type ScheduleStore = {
 
   selectedDays: Record<DayOfWeek, boolean>;
   toggleSelectedDay: (day: DayOfWeek) => void;
+  /** Replace the apply-to-days selection (absolute, not toggle). */
+  setSelectedDays: (days: DaysSelected) => void;
 };
 
 export const useScheduleStore = create<ScheduleStore>((set, get) => ({
@@ -107,10 +110,11 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
   },
   changesPresent: false,
   checkForChanges: () => {
-    const { selectedDay, selectedSchedule, originalSchedules, selectedDays } = get();
+    const { selectedDay, selectedSchedule, originalSchedules } = get();
     if (!originalSchedules) return;
     const { side } = useAppStore.getState();
-    const changesPresent = !_.isEqual(originalSchedules[side][selectedDay], selectedSchedule) || _.some(selectedDays, value => value === true);
+    // Only schedule content — apply-to-days defaults to all days, so selection alone is not a "change"
+    const changesPresent = !_.isEqual(originalSchedules[side][selectedDay], selectedSchedule);
 
     set({ changesPresent });
   },
@@ -141,14 +145,25 @@ export const useScheduleStore = create<ScheduleStore>((set, get) => ({
 
   selectedDays: { ...DEFAULT_DAYS_SELECTED },
   toggleSelectedDay: (day) => {
-    const { selectedDays, checkForChanges } = get();
+    const { selectedDays, selectedDay } = get();
+    // Current day is always part of the save target
+    if (day === selectedDay) return;
     set({
       selectedDays: {
         ...selectedDays,
         [day]: !selectedDays[day],
       }
     });
-    checkForChanges();
+  },
+  setSelectedDays: (days) => {
+    const { selectedDay } = get();
+    set({
+      selectedDays: {
+        ...days,
+        // Current day always included
+        [selectedDay]: true,
+      },
+    });
   },
 
   originalSchedules: undefined,
