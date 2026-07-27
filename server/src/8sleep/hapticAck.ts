@@ -5,23 +5,23 @@ import { executeFunction } from './deviceApi.js';
 import { wait } from './promises.js';
 
 /**
- * Pod 4 franken only accepts certain alarm patterns. Sending `rise` logs:
- *   parseAlarmPattern|[alarm] invalid pattern - using double
- * so we always use `double` for haptic acks.
+ * Pod 4 only accepts pattern "double" ( "rise" logs invalid pattern and falls back).
  *
- * Timing aims for ~2 distinct motor hits per second (mouse double-click pace).
+ * Important: keep `du` short (1s). A longer duration leaves a sustained low rumble
+ * after the double-click pattern if ALARM_CLEAR is delayed by other franken commands.
  */
 const PATTERN = 'double' as const;
-const HAPTIC_INTENSITY = 55;
-/** How long to leave the motor on before CLEAR for a single "click" feel */
-const CLICK_ON_MS = 220;
-/** Gap after CLEAR before the next click */
-const CLICK_GAP_MS = 280;
+const HAPTIC_INTENSITY = 50;
+const CLICK_ON_MS = 200;
+const CLICK_GAP_MS = 300;
+/** How long to let the firmware double-pattern play before CLEAR */
+const DOUBLE_PATTERN_MS = 550;
 
-async function startMotor(command: 'ALARM_LEFT' | 'ALARM_RIGHT', durationSec: number) {
+async function startMotor(command: 'ALARM_LEFT' | 'ALARM_RIGHT') {
+  // du=1 is the minimum useful window; we always CLEAR early for a short ack
   const payload = {
     pl: HAPTIC_INTENSITY,
-    du: durationSec,
+    du: 1,
     pi: PATTERN,
     tt: Math.floor(Date.now() / 1000),
   };
@@ -30,10 +30,15 @@ async function startMotor(command: 'ALARM_LEFT' | 'ALARM_RIGHT', durationSec: nu
 
 async function stopMotor() {
   await executeFunction('ALARM_CLEAR', 'empty');
+  // Second clear: belt-and-suspenders if the first was ignored while busy
+  await wait(30);
+  await executeFunction('ALARM_CLEAR', 'empty');
 }
 
 /**
- * Side-local vibration acknowledgment: N short pulses on the tapped side.
+ * Side-local vibration acknowledgment.
+ * Must fully finish (including CLEAR) before other franken commands run,
+ * or a late CLEAR lets the motor keep rumbling.
  */
 export async function playHapticAck(side: Side, pulses: number): Promise<void> {
   const count = Math.max(0, Math.min(8, Math.floor(pulses)));
@@ -42,27 +47,30 @@ export async function playHapticAck(side: Side, pulses: number): Promise<void> {
   const command = side === 'left' ? 'ALARM_LEFT' : 'ALARM_RIGHT';
 
   try {
-    // Two taps: let firmware run its native double pattern (two hits)
     if (count === 2) {
-      await startMotor(command, 3);
-      await wait(750);
+      await startMotor(command);
+      await wait(DOUBLE_PATTERN_MS);
       await stopMotor();
-      logger.info(`Haptic ack: ${side} × 2 (firmware double pattern)`);
+      logger.info(`Haptic ack: ${side} × 2 (double pattern, du=1)`);
       return;
     }
 
-    // 1 / 3 / 4…: discrete clicks via start → wait → clear → gap
     for (let index = 0; index < count; index++) {
-      // du must be >= 1 second in firmware; we CLEAR early for a short click
-      await startMotor(command, 2);
+      await startMotor(command);
       await wait(CLICK_ON_MS);
       await stopMotor();
       if (index < count - 1) {
         await wait(CLICK_GAP_MS);
       }
     }
-    logger.info(`Haptic ack: ${side} × ${count} (discrete clicks)`);
+    logger.info(`Haptic ack: ${side} × ${count} (discrete)`);
   } catch (error) {
+    // Always try to silence the motor if something failed mid-ack
+    try {
+      await stopMotor();
+    } catch {
+      // ignore
+    }
     logger.warn(`Haptic ack failed for ${side}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
