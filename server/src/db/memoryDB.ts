@@ -1,11 +1,13 @@
 // This is for storing data in memory when we don't want to update any files in the config.dbFolder
 // Updating files in the config.dbFolder will re-trigger job deletion and creation
-// This only keeps track of if the alarm is running, since we can't get that programmatically from the pod
 import { Low, Memory } from 'lowdb';
 
 type SideState = {
   isAlarmVibrating: boolean;
+  /** ISO timestamp when this side was last powered on (for session length / analyze window) */
+  powerOnAt?: string;
   analyzeSleep: {
+    /** Date.now() ms of last analyze start — used to debounce duplicates */
     lastRan?: number;
   }
 };
@@ -18,12 +20,14 @@ type MemoryDB = {
 const defaultMemoryDB: MemoryDB = {
   left: {
     isAlarmVibrating: false,
+    powerOnAt: undefined,
     analyzeSleep: {
       lastRan: undefined,
     }
   },
   right: {
     isAlarmVibrating: false,
+    powerOnAt: undefined,
     analyzeSleep: {
       lastRan: undefined,
     }

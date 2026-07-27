@@ -1,4 +1,3 @@
-import SearchIcon from '@mui/icons-material/Search';
 import { Button, Box, Alert } from '@mui/material';
 import { DeviceStatusPostError, postDeviceStatus } from '@api/deviceStatus.ts';
 import { DeviceStatus } from '@api/deviceStatusSchema.ts';
@@ -7,7 +6,6 @@ import { useAppStore } from '@state/appStore.tsx';
 import { useSettings } from '@api/settings.ts';
 import { useState } from 'react';
 import { useServices } from '@api/services.ts';
-import { Job, postJobs } from '@api/jobs.ts';
 import AnalyzeSleepNotification from './AnalyzeSleepNotification.tsx';
 import { useControlTempStore } from './controlTempStore.tsx';
 
@@ -25,9 +23,11 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
   const setDeviceStatus = useControlTempStore(state => state.setDeviceStatus);
   const isInAwayMode = settings?.[side].awayMode;
   const disabled = isUpdating || isInAwayMode;
-  const [showAnalyzeSleep, setShowAnalyzeSleep] = useState(false);
   const [showAnalyzeNotification, setShowAnalyzeNotification] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const analyzeEnabled = settings?.[side]?.analyzeSleep?.enabled ?? true;
+  const biometricsEnabled = services?.biometrics?.enabled === true;
 
   const handleOnClick = (powerOn: boolean) => {
     setErrorMessage(null);
@@ -41,12 +41,6 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
         ? { isOn: true, targetTemperatureF }
         : { isOn: false },
     };
-    if (powerOn) {
-      setShowAnalyzeSleep(false);
-    } else {
-      setShowAnalyzeSleep(true);
-      setTimeout(() => setShowAnalyzeSleep(false), 20_000);
-    }
 
     setIsUpdating(true);
     setDeviceStatus(payload);
@@ -66,6 +60,12 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
             );
           }
         }
+        // Server auto-runs analyze on power-off when the side setting allows it.
+        // Surface a brief "analyzing" notice when that path is active.
+        if (!powerOn && analyzeEnabled && biometricsEnabled) {
+          setShowAnalyzeNotification(true);
+          setTimeout(() => setShowAnalyzeNotification(false), 30_000);
+        }
       })
       .catch(error => {
         console.error(error);
@@ -82,16 +82,6 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
       });
   };
 
-  const handleAnalyzeSleep = () => {
-    const capitalized = side.charAt(0).toUpperCase() + side.slice(1) as Job;
-    setShowAnalyzeNotification(true);
-    // @ts-expect-error
-    postJobs([`analyzeSleep${capitalized}`])
-      .catch(error => {
-        console.error(error);
-      });
-    setTimeout(() => setShowAnalyzeNotification(false), 120_000);
-  };
   if (isInAwayMode) return null;
 
   return (
@@ -104,18 +94,6 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
           <Alert severity="error" onClose={ () => setErrorMessage(null) }>
             { errorMessage }
           </Alert>
-        )
-      }
-      {
-        showAnalyzeSleep && !isUpdating && services?.biometrics?.enabled && (
-          <Button
-            variant="contained"
-            disabled={ disabled }
-            onClick={ handleAnalyzeSleep }
-          >
-            <SearchIcon />
-            Analyze sleep
-          </Button>
         )
       }
       {

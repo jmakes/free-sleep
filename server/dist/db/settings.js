@@ -6,6 +6,10 @@ import config from '../config.js';
 const defaultSideSettings = {
     name: 'Side',
     awayMode: false,
+    analyzeSleep: {
+        enabled: true,
+        minDurationMinutes: 30,
+    },
     scheduleOverrides: {
         temperatureSchedules: {
             disabled: false,
@@ -97,11 +101,18 @@ for (const side of ['left', 'right']) {
 }
 settingsDB.data = _.merge({}, defaultData, settingsDB.data);
 // Ensure each side has only the three multi-tap keys (don't resurrect singleTap)
+// and analyzeSleep defaults if missing from older installs
 for (const side of ['left', 'right']) {
     settingsDB.data[side].taps = {
         doubleTap: settingsDB.data[side].taps?.doubleTap ?? defaultSideSettings.taps.doubleTap,
         tripleTap: settingsDB.data[side].taps?.tripleTap ?? defaultSideSettings.taps.tripleTap,
         quadTap: settingsDB.data[side].taps?.quadTap ?? defaultSideSettings.taps.quadTap,
+    };
+    settingsDB.data[side].analyzeSleep = {
+        enabled: settingsDB.data[side].analyzeSleep?.enabled ??
+            defaultSideSettings.analyzeSleep.enabled,
+        minDurationMinutes: settingsDB.data[side].analyzeSleep?.minDurationMinutes ??
+            defaultSideSettings.analyzeSleep.minDurationMinutes,
     };
 }
 await settingsDB.write();

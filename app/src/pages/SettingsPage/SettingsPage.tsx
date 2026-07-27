@@ -64,10 +64,10 @@ export default function SettingsPage() {
 
             <InfoIcon sx={ { color: 'text.secondary' } }/>
             <Typography color="text.secondary">
-            Away mode:
-            Disables schedules and temperature control for one side.
-            That side will mirror any temperature or schedule changes from the active side.
-            If both sides are in away mode, no schedules will apply.
+            Away mode disables schedules and temperature control for one side
+            (it mirrors the active side). Analyze sleep runs automatically when a
+            side turns off (schedule, button, or cover tap) if enabled above and
+            biometrics is on under Features.
             </Typography>
           </Box>
         </Section>

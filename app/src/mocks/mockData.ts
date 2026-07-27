@@ -202,6 +202,10 @@ const createSettings = (): Settings => ({
   left: {
     name: 'Left side',
     awayMode: false,
+    analyzeSleep: {
+      enabled: true,
+      minDurationMinutes: 30,
+    },
     scheduleOverrides: {
       temperatureSchedules: { disabled: false, expiresAt: '' },
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },
@@ -226,6 +230,10 @@ const createSettings = (): Settings => ({
   right: {
     name: 'Right side',
     awayMode: false,
+    analyzeSleep: {
+      enabled: true,
+      minDurationMinutes: 30,
+    },
     scheduleOverrides: {
       temperatureSchedules: { disabled: false, expiresAt: '' },
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },

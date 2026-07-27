@@ -19,17 +19,41 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
   const { isUpdating } = useAppStore();
   const title = side.charAt(0).toUpperCase() + side.slice(1);
 
-  // Local state to manage the text field value
+  const analyzeSleep = settings?.[side]?.analyzeSleep;
+  const analyzeEnabled = analyzeSleep?.enabled ?? true;
+  const savedMinDuration = analyzeSleep?.minDurationMinutes ?? 30;
+
+  // Local state for text fields
   const [sideName, setSideName] = useState(settings?.[side]?.name || '');
-  // Update local state when settings change (e.g., from API)
+  const [minDuration, setMinDuration] = useState(String(savedMinDuration));
+
   useEffect(() => {
     setSideName(settings?.[side]?.name || side);
   }, [settings, side]);
 
-  const handleBlur = () => {
+  useEffect(() => {
+    setMinDuration(String(savedMinDuration));
+  }, [savedMinDuration]);
+
+  const handleNameBlur = () => {
     if (sideName.trim().length === 0) return;
     if (sideName.trim() !== settings?.[side]?.name) {
       updateSettings({ [side]: { name: sideName.trim() } });
+    }
+  };
+
+  const handleMinDurationBlur = () => {
+    const next = Math.min(24 * 60, Math.max(0, Math.round(Number(minDuration) || 0)));
+    setMinDuration(String(next));
+    if (next !== savedMinDuration) {
+      updateSettings({
+        [side]: {
+          analyzeSleep: {
+            enabled: analyzeEnabled,
+            minDurationMinutes: next,
+          },
+        },
+      });
     }
   };
 
@@ -41,7 +65,7 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
         placeholder="Enter side name"
         value={ sideName }
         onChange={ (e) => setSideName(e.target.value) }
-        onBlur={ handleBlur }
+        onBlur={ handleNameBlur }
         disabled={ isUpdating }
         sx={ { mt: 2 } }
         inputProps={ { maxLength: 20 } }
@@ -55,6 +79,35 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
           onChange={ (event) => updateSettings({ [side]: { awayMode: event.target.checked } }) }
         />
       </Grid>
+      <Grid container spacing={ 0 } sx={ { width: '100%', mt: 0.5, alignItems: 'center' } }>
+        <Typography alignContent="center">Analyze sleep</Typography>
+        <Switch
+          disabled={ isUpdating }
+          checked={ analyzeEnabled }
+          onChange={ (event) => updateSettings({
+            [side]: {
+              analyzeSleep: {
+                enabled: event.target.checked,
+                minDurationMinutes: savedMinDuration,
+              },
+            },
+          }) }
+        />
+      </Grid>
+      { analyzeEnabled && (
+        <TextField
+          label="Min on time (minutes)"
+          type="number"
+          size="small"
+          disabled={ isUpdating }
+          value={ minDuration }
+          inputProps={ { min: 0, max: 24 * 60, step: 5 } }
+          helperText="Auto-analyze when this side turns off after being on at least this long (schedule, button, or cover tap). Requires biometrics under Features."
+          sx={ { width: '100%', mt: 1 } }
+          onChange={ (event) => setMinDuration(event.target.value) }
+          onBlur={ handleMinDurationBlur }
+        />
+      ) }
       <TapControls side={ side } settings={ settings } updateSettings={ updateSettings } />
     </Box>
   );

@@ -1,14 +1,16 @@
 import moment from 'moment-timezone';
 import logger from '../logger.js';
 import settingsDB from '../db/settings.js';
+import memoryDB from '../db/memoryDB.js';
 import { connectFranken } from './frankenServer.js';
 import { wait } from './promises.js';
 import { DeviceStatus, Version } from '../routes/deviceStatus/deviceStatusSchema.js';
 import { Side } from '../db/schedulesSchema.js';
-import { Gesture, GestureSchema } from '../db/settingsSchema.js';
+import { Gesture } from '../db/settingsSchema.js';
 import serverStatus from '../serverStatus.js';
 import { playHapticAck, pulseCountForGesture } from './hapticAck.js';
 import { recordGestureResult, runGestureAction } from './gestureActions.js';
+import { markSidePoweredOn } from '../jobs/analyzeSleep.js';
 
 
 
@@ -133,6 +135,15 @@ export class FrankenMonitor {
       logger.info(`Gestures supported for ${this.deviceStatus.coverVersion}`);
     } else {
       logger.info(`Gestures not supported for ${this.deviceStatus.coverVersion}`);
+    }
+    // If a side is already on at startup, seed session start so min-duration
+    // analyze checks work after a service restart mid-sleep.
+    await memoryDB.read();
+    for (const side of ['left', 'right'] as const) {
+      if (this.deviceStatus[side]?.isOn && !memoryDB.data[side].powerOnAt) {
+        await markSidePoweredOn(side);
+        logger.info(`Seeded powerOnAt for ${side} (already on at franken start)`);
+      }
     }
     // No point in querying device status every 3 seconds for checking the prime status...
     while (this.isRunning) {

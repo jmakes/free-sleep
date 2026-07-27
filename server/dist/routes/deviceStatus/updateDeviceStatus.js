@@ -6,6 +6,7 @@ import settingsDB from '../../db/settings.js';
 import memoryDB from '../../db/memoryDB.js';
 import { INVERTED_SETTINGS_KEY_MAPPING } from '../../8sleep/loadDeviceStatus.js';
 import { setCommandedTargetF } from '../../8sleep/commandedTemperature.js';
+import { markSidePoweredOn, maybeAnalyzeSleepOnPowerOff, } from '../../jobs/analyzeSleep.js';
 const DEFAULT_ON_TEMP_F = 82;
 const calculateLevelFromF = (temperatureF) => {
     const level = (temperatureF - 82.5) / 27.5 * 100;
@@ -52,6 +53,15 @@ const updateSide = async (side, sideStatus) => {
             await executeFunction('TEMP_LEVEL_RIGHT', level);
             await executeFunction('RIGHT_TEMP_DURATION', onDuration);
         }
+        // Track session start for auto sleep analysis min-duration
+        const sidesToMark = [];
+        if (updateLeft)
+            sidesToMark.push('left');
+        if (updateRight)
+            sidesToMark.push('right');
+        for (const markedSide of sidesToMark) {
+            await markSidePoweredOn(markedSide);
+        }
     }
     else if (isOn === false) {
         logger.info(`Power OFF ${side}: updateL=${updateLeft} updateR=${updateRight}`);
@@ -60,6 +70,16 @@ const updateSide = async (side, sideStatus) => {
             await executeFunction('LEFT_TEMP_DURATION', '0');
         if (updateRight)
             await executeFunction('RIGHT_TEMP_DURATION', '0');
+        // Auto-analyze after every power-off path (schedule / GUI / gesture)
+        const sidesToAnalyze = [];
+        if (updateLeft)
+            sidesToAnalyze.push('left');
+        if (updateRight)
+            sidesToAnalyze.push('right');
+        for (const analyzeSide of sidesToAnalyze) {
+            // Fire-and-forget so power-off latency stays low; analysis is CPU-heavy Python
+            void maybeAnalyzeSleepOnPowerOff(analyzeSide);
+        }
     }
     // Temperature-only updates (power already on)
     if (targetTemperatureF !== undefined && isOn !== true) {

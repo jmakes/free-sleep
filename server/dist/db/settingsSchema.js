@@ -34,9 +34,16 @@ export const TapConfig = z.discriminatedUnion('type', [
 ]);
 /** Multi-tap patterns reported by the Pod cover (Pod 4/5). Single-tap is not available over dac. */
 export const GestureSchema = z.enum(['doubleTap', 'tripleTap', 'quadTap']);
+/** Auto-run sleep analysis when this side powers off (schedule, GUI, or tap). */
+const AnalyzeSleepSettingsSchema = z.object({
+    enabled: z.boolean(),
+    /** Skip analysis if the side was on for less than this many minutes */
+    minDurationMinutes: z.number().int().min(0).max(24 * 60),
+}).strict();
 const SideSettingsSchema = z.object({
     name: z.string().min(1).max(20),
     awayMode: z.boolean(),
+    analyzeSleep: AnalyzeSleepSettingsSchema,
     scheduleOverrides: z.object({
         temperatureSchedules: z.object({
             disabled: z.boolean(),
