@@ -71,12 +71,24 @@ function isAllowedOrigin(origin) {
     return false;
 }
 export default function (app) {
+    // High-frequency poll endpoints — demote to debug so logs stay readable
+    const quietRequestPaths = [
+        '/api/gestures/recent',
+        '/api/metrics/presence',
+    ];
     app.use((req, res, next) => {
         const startTime = Date.now();
         // Hook into the response `finish` event to log after the response is sent
         res.on('finish', () => {
             const duration = Date.now() - startTime;
-            logger.info(`${req.method} ${req.originalUrl} - ${res.statusCode} - ${duration}ms`);
+            const line = `${req.method} ${req.originalUrl} - ${res.statusCode} - ${duration}ms`;
+            const isQuiet = quietRequestPaths.some((path) => req.originalUrl.startsWith(path));
+            if (isQuiet) {
+                logger.debug(line);
+            }
+            else {
+                logger.info(line);
+            }
         });
         next();
     });

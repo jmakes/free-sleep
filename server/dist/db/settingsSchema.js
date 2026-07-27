@@ -32,8 +32,8 @@ export const TapConfig = z.discriminatedUnion('type', [
     AlarmTapConfig,
     NoneTapConfig,
 ]);
-/** Multi-tap patterns reported by the Pod cover (Pod 4/5). singleTap is optional on hardware. */
-export const GestureSchema = z.enum(['singleTap', 'doubleTap', 'tripleTap', 'quadTap']);
+/** Multi-tap patterns reported by the Pod cover (Pod 4/5). Single-tap is not available over dac. */
+export const GestureSchema = z.enum(['doubleTap', 'tripleTap', 'quadTap']);
 const SideSettingsSchema = z.object({
     name: z.string().min(1).max(20),
     awayMode: z.boolean(),
@@ -49,7 +49,6 @@ const SideSettingsSchema = z.object({
         })
     }),
     taps: z.object({
-        singleTap: TapConfig,
         doubleTap: TapConfig,
         tripleTap: TapConfig,
         quadTap: TapConfig,

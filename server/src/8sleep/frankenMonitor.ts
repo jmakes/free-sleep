@@ -52,15 +52,16 @@ export class FrankenMonitor {
       return;
     }
 
-    logger.info(`Gesture detected: ${side} ${gesture} → ${behavior.type}`);
-
     // Haptic MUST finish (including ALARM_CLEAR) before other franken commands.
     // Running in parallel with temp updates delayed CLEAR and left a long low rumble
     // after the double-click pattern (du was also too long).
     await playHapticAck(side, pulseCountForGesture(gesture));
     const actionResult = await runGestureAction(side, gesture, behavior, nextDeviceStatus);
     recordGestureResult(side, gesture, actionResult);
-    logger.info(actionResult.message);
+    // Single info line per gesture (haptic is debug elsewhere)
+    logger.info(
+      `Gesture ${side}.${gesture} (${behavior.type}): ${actionResult.message}`
+    );
   }
 
   /**
@@ -83,9 +84,7 @@ export class FrankenMonitor {
         const previous = this.deviceStatus?.[side]?.taps?.[gesture];
         const next = nextDeviceStatus[side]?.taps?.[gesture];
         if (this.isCounterIncrease(previous, next)) {
-          logger.info(
-            `Tap event: ${side}.${gesture} ${previous} → ${next}`
-          );
+          logger.debug(`Tap counter: ${side}.${gesture} ${previous} → ${next}`);
           await this.processGesture(side, gesture, nextDeviceStatus);
           // One gesture per side per poll — multi-tap timestamps can be close
           break;

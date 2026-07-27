@@ -7,10 +7,8 @@ import { updateDeviceStatus } from '../routes/deviceStatus/updateDeviceStatus.js
 import { executeFunction } from './deviceApi.js';
 import { DAYS_OF_WEEK } from '../jobs/utils.js';
 import { pushGestureEvent } from '../db/gestureEvents.js';
-import { MAX_TEMP_F, MIN_TEMP_F } from '../utils/temperature.js';
-function clampTempF(tempF) {
-    return Math.min(MAX_TEMP_F, Math.max(MIN_TEMP_F, Math.round(tempF)));
-}
+import { clampTempF, resolveTargetBaselineF, } from './commandedTemperature.js';
+const DEFAULT_ON_TEMP_F = 82;
 function parseMinutes(time) {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
@@ -18,10 +16,6 @@ function parseMinutes(time) {
 function offsetFromPowerOn(minutes, powerOnMinutes) {
     return (minutes - powerOnMinutes + 24 * 60) % (24 * 60);
 }
-/**
- * Find the schedule temperature slot currently in effect for this side/day.
- * Uses power on as session start so overnight schedules work (e.g. 21:00 → 09:00).
- */
 export function findActiveTemperatureSlot(temperatures, powerOn, nowMinutes) {
     const keys = Object.keys(temperatures);
     if (keys.length === 0)
@@ -37,7 +31,6 @@ export function findActiveTemperatureSlot(temperatures, powerOn, nowMinutes) {
             bestTime = time;
         }
     }
-    // If nothing has fired yet in this session, use the earliest slot after power-on
     if (bestTime === null) {
         let earliestOffset = Number.POSITIVE_INFINITY;
         for (const time of keys) {
@@ -50,9 +43,6 @@ export function findActiveTemperatureSlot(temperatures, powerOn, nowMinutes) {
     }
     return bestTime;
 }
-/**
- * Write the current target temperature into the active schedule slot for every day.
- */
 export async function applyCurrentTempToScheduleAllDays(side, temperatureF) {
     await schedulesDB.read();
     await settingsDB.read();
@@ -62,7 +52,6 @@ export async function applyCurrentTempToScheduleAllDays(side, temperatureF) {
     const nowMinutes = now.hours() * 60 + now.minutes();
     const todaySchedule = schedulesDB.data[side][dayName];
     let slotTime = findActiveTemperatureSlot(todaySchedule.temperatures, todaySchedule.power.on, nowMinutes);
-    // No temperature adjustments yet — create one at power-on time
     if (!slotTime) {
         slotTime = todaySchedule.power.on;
     }
@@ -76,76 +65,93 @@ export async function applyCurrentTempToScheduleAllDays(side, temperatureF) {
     logger.info(`Gesture scheduleApply: ${side} set ${slotTime} → ${temp}°F on all ${daysUpdated} days`);
     return { slotTime, temperatureF: temp, daysUpdated };
 }
-function describeAction(config, detail) {
-    switch (config.type) {
-        case 'temperature':
-            return `${config.change === 'increment' ? '+' : '−'}${config.amount}°F${detail ? ` (${detail})` : ''}`;
-        case 'power':
-            return `power ${config.action}`;
-        case 'scheduleApply':
-            return detail ?? 'apply temperature to schedule (all days)';
-        case 'alarm':
-            return `alarm ${config.behavior}`;
-        case 'none':
-            return 'no action';
-        default:
-            return 'unknown action';
-    }
-}
 export async function runGestureAction(side, gesture, config, deviceStatus) {
     await settingsDB.read();
     if (settingsDB.data[side].awayMode) {
         const message = `${side} side is in away mode — tap ignored`;
-        logger.info(message);
+        logger.debug(message);
         return { success: false, message };
     }
     try {
+        const sideStatus = deviceStatus[side];
+        const wasOn = sideStatus.isOn;
+        // Any gesture turns the side on when it is off (no temp delta on that tap)
+        if (!wasOn) {
+            const targetTemperatureF = resolveTargetBaselineF(side, sideStatus.targetTemperatureF, sideStatus.currentTemperatureF || DEFAULT_ON_TEMP_F);
+            await updateDeviceStatus({
+                [side]: { isOn: true, targetTemperatureF },
+            });
+            const message = `${side}: ${gesture} → turned on at ${targetTemperatureF}°F`;
+            return { success: true, message, targetTemperatureF, isOn: true };
+        }
+        // Side is on — apply configured action
         if (config.type === 'none') {
-            return { success: true, message: `${side}: ${gesture} → no action` };
+            const targetTemperatureF = resolveTargetBaselineF(side, sideStatus.targetTemperatureF, DEFAULT_ON_TEMP_F);
+            return {
+                success: true,
+                message: `${side}: ${gesture} → no action`,
+                targetTemperatureF,
+                isOn: true,
+            };
         }
         if (config.type === 'temperature') {
-            const current = deviceStatus[side].targetTemperatureF;
+            // Use last commanded °F, NOT franken level→°F (lossy / can lag by several °F)
+            const current = resolveTargetBaselineF(side, sideStatus.targetTemperatureF, DEFAULT_ON_TEMP_F);
             const delta = config.change === 'increment' ? config.amount : -config.amount;
             const next = clampTempF(current + delta);
             await updateDeviceStatus({
                 [side]: { targetTemperatureF: next },
             });
-            const message = `${side}: ${gesture} → ${describeAction(config, `${current}→${next}°F`)}`;
-            return { success: true, message };
+            const sign = config.change === 'increment' ? '+' : '−';
+            const message = `${side}: ${gesture} → ${sign}${config.amount}°F (${current}→${next}°F)`;
+            return { success: true, message, targetTemperatureF: next, isOn: true };
         }
         if (config.type === 'power') {
-            // Temporarily refuse power gestures so a bad tap detection cannot fight the UI
-            // or leave a side stuck off while debugging power-on reliability.
-            const message = `${side}: ${gesture} → power action ignored (temporarily disabled)`;
-            logger.warn(message);
-            return { success: false, message };
+            let isOn = true;
+            if (config.action === 'off')
+                isOn = false;
+            else if (config.action === 'on')
+                isOn = true;
+            else
+                isOn = !sideStatus.isOn;
+            const targetTemperatureF = resolveTargetBaselineF(side, sideStatus.targetTemperatureF, DEFAULT_ON_TEMP_F);
+            await updateDeviceStatus({
+                [side]: isOn
+                    ? { isOn: true, targetTemperatureF }
+                    : { isOn: false },
+            });
+            const message = `${side}: ${gesture} → power ${isOn ? 'on' : 'off'}`;
+            return {
+                success: true,
+                message,
+                targetTemperatureF,
+                isOn,
+            };
         }
         if (config.type === 'scheduleApply') {
-            // Prefer target temp; fall back to measured if target missing
-            const temperatureF = deviceStatus[side].targetTemperatureF || deviceStatus[side].currentTemperatureF;
+            const temperatureF = resolveTargetBaselineF(side, sideStatus.targetTemperatureF, sideStatus.currentTemperatureF || DEFAULT_ON_TEMP_F);
             const result = await applyCurrentTempToScheduleAllDays(side, temperatureF);
             const message = `${side}: ${gesture} → schedule ${result.slotTime} = ${result.temperatureF}°F (all days)`;
-            return { success: true, message };
+            return {
+                success: true,
+                message,
+                targetTemperatureF: result.temperatureF,
+                isOn: true,
+            };
         }
         if (config.type === 'alarm') {
-            if (config.behavior === 'dismiss') {
-                await executeFunction('ALARM_CLEAR', 'empty');
-                await memoryDB.read();
-                memoryDB.data[side].isAlarmVibrating = false;
-                await memoryDB.write();
-                if (config.inactiveAlarmBehavior === 'power' && !deviceStatus[side].isAlarmVibrating) {
-                    // Optional: if no alarm was running, treat as power toggle — leave as dismiss-only for safety
-                }
-                const message = `${side}: ${gesture} → alarm dismissed`;
-                return { success: true, message };
-            }
-            // Snooze: clear current vibration; full reschedule is not wired yet
             await executeFunction('ALARM_CLEAR', 'empty');
             await memoryDB.read();
             memoryDB.data[side].isAlarmVibrating = false;
             await memoryDB.write();
-            const message = `${side}: ${gesture} → alarm snoozed (cleared)`;
-            return { success: true, message };
+            const targetTemperatureF = resolveTargetBaselineF(side, sideStatus.targetTemperatureF, DEFAULT_ON_TEMP_F);
+            const message = `${side}: ${gesture} → alarm ${config.behavior}`;
+            return {
+                success: true,
+                message,
+                targetTemperatureF,
+                isOn: true,
+            };
         }
         return { success: false, message: `${side}: ${gesture} → unsupported action` };
     }
@@ -161,6 +167,8 @@ export function recordGestureResult(side, gesture, result) {
         gesture,
         message: result.message,
         success: result.success,
+        targetTemperatureF: result.targetTemperatureF,
+        isOn: result.isOn,
     });
 }
 //# sourceMappingURL=gestureActions.js.map

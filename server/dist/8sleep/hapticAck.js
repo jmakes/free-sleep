@@ -47,7 +47,7 @@ export async function playHapticAck(side, pulses) {
         }
         // Final silence
         await executeFunction('ALARM_CLEAR', 'empty');
-        logger.info(`Haptic ack: ${side} × ${count} ticks`);
+        logger.debug(`Haptic ack: ${side} × ${count} ticks`);
     }
     catch (error) {
         try {
@@ -61,8 +61,6 @@ export async function playHapticAck(side, pulses) {
 }
 export function pulseCountForGesture(gesture) {
     switch (gesture) {
-        case 'singleTap':
-            return 1;
         case 'doubleTap':
             return 2;
         case 'tripleTap':
@@ -70,7 +68,7 @@ export function pulseCountForGesture(gesture) {
         case 'quadTap':
             return 4;
         default:
-            return 1;
+            return 2;
     }
 }
 //# sourceMappingURL=hapticAck.js.map

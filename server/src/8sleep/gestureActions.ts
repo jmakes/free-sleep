@@ -11,13 +11,12 @@ import { updateDeviceStatus } from '../routes/deviceStatus/updateDeviceStatus.js
 import { executeFunction } from './deviceApi.js';
 import { DAYS_OF_WEEK } from '../jobs/utils.js';
 import { pushGestureEvent } from '../db/gestureEvents.js';
-import { MAX_TEMP_F, MIN_TEMP_F } from '../utils/temperature.js';
+import {
+  clampTempF,
+  resolveTargetBaselineF,
+} from './commandedTemperature.js';
 
 const DEFAULT_ON_TEMP_F = 82;
-
-function clampTempF(tempF: number): number {
-  return Math.min(MAX_TEMP_F, Math.max(MIN_TEMP_F, Math.round(tempF)));
-}
 
 function parseMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
@@ -119,7 +118,7 @@ export async function runGestureAction(
 
   if (settingsDB.data[side].awayMode) {
     const message = `${side} side is in away mode — tap ignored`;
-    logger.info(message);
+    logger.debug(message);
     return { success: false, message };
   }
 
@@ -129,8 +128,10 @@ export async function runGestureAction(
 
     // Any gesture turns the side on when it is off (no temp delta on that tap)
     if (!wasOn) {
-      const targetTemperatureF = clampTempF(
-        sideStatus.targetTemperatureF || sideStatus.currentTemperatureF || DEFAULT_ON_TEMP_F
+      const targetTemperatureF = resolveTargetBaselineF(
+        side,
+        sideStatus.targetTemperatureF,
+        sideStatus.currentTemperatureF || DEFAULT_ON_TEMP_F,
       );
       await updateDeviceStatus({
         [side]: { isOn: true, targetTemperatureF },
@@ -141,16 +142,26 @@ export async function runGestureAction(
 
     // Side is on — apply configured action
     if (config.type === 'none') {
+      const targetTemperatureF = resolveTargetBaselineF(
+        side,
+        sideStatus.targetTemperatureF,
+        DEFAULT_ON_TEMP_F,
+      );
       return {
         success: true,
         message: `${side}: ${gesture} → no action`,
-        targetTemperatureF: sideStatus.targetTemperatureF,
+        targetTemperatureF,
         isOn: true,
       };
     }
 
     if (config.type === 'temperature') {
-      const current = sideStatus.targetTemperatureF;
+      // Use last commanded °F, NOT franken level→°F (lossy / can lag by several °F)
+      const current = resolveTargetBaselineF(
+        side,
+        sideStatus.targetTemperatureF,
+        DEFAULT_ON_TEMP_F,
+      );
       const delta = config.change === 'increment' ? config.amount : -config.amount;
       const next = clampTempF(current + delta);
       await updateDeviceStatus({
@@ -167,8 +178,10 @@ export async function runGestureAction(
       else if (config.action === 'on') isOn = true;
       else isOn = !sideStatus.isOn;
 
-      const targetTemperatureF = clampTempF(
-        sideStatus.targetTemperatureF || DEFAULT_ON_TEMP_F
+      const targetTemperatureF = resolveTargetBaselineF(
+        side,
+        sideStatus.targetTemperatureF,
+        DEFAULT_ON_TEMP_F,
       );
       await updateDeviceStatus({
         [side]: isOn
@@ -179,13 +192,17 @@ export async function runGestureAction(
       return {
         success: true,
         message,
-        targetTemperatureF: isOn ? targetTemperatureF : sideStatus.targetTemperatureF,
+        targetTemperatureF,
         isOn,
       };
     }
 
     if (config.type === 'scheduleApply') {
-      const temperatureF = sideStatus.targetTemperatureF || sideStatus.currentTemperatureF;
+      const temperatureF = resolveTargetBaselineF(
+        side,
+        sideStatus.targetTemperatureF,
+        sideStatus.currentTemperatureF || DEFAULT_ON_TEMP_F,
+      );
       const result = await applyCurrentTempToScheduleAllDays(side, temperatureF);
       const message = `${side}: ${gesture} → schedule ${result.slotTime} = ${result.temperatureF}°F (all days)`;
       return {
@@ -201,11 +218,16 @@ export async function runGestureAction(
       await memoryDB.read();
       memoryDB.data[side].isAlarmVibrating = false;
       await memoryDB.write();
+      const targetTemperatureF = resolveTargetBaselineF(
+        side,
+        sideStatus.targetTemperatureF,
+        DEFAULT_ON_TEMP_F,
+      );
       const message = `${side}: ${gesture} → alarm ${config.behavior}`;
       return {
         success: true,
         message,
-        targetTemperatureF: sideStatus.targetTemperatureF,
+        targetTemperatureF,
         isOn: true,
       };
     }

@@ -54,7 +54,7 @@ export async function playHapticAck(side: Side, pulses: number): Promise<void> {
 
     // Final silence
     await executeFunction('ALARM_CLEAR', 'empty');
-    logger.info(`Haptic ack: ${side} × ${count} ticks`);
+    logger.debug(`Haptic ack: ${side} × ${count} ticks`);
   } catch (error) {
     try {
       await executeFunction('ALARM_CLEAR', 'empty');

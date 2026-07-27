@@ -9,6 +9,8 @@ export function pushGestureEvent(event) {
         gesture: event.gesture,
         message: event.message,
         success: event.success,
+        targetTemperatureF: event.targetTemperatureF,
+        isOn: event.isOn,
     };
     events.unshift(full);
     if (events.length > MAX_EVENTS) {

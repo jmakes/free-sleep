@@ -176,7 +176,7 @@ export async function loadDeviceStatus(response, getGestures) {
     };
     if (getGestures) {
         try {
-            // Pass full line map (includes passthrough keys) for flexible single-tap discovery
+            // Multi-tap last-event timestamps (double / triple / quad)
             const snapshot = extractGestureCounters(rawDeviceData);
             deviceStatus.left.taps = {};
             deviceStatus.right.taps = {};

@@ -43,14 +43,14 @@ export class FrankenMonitor {
             logger.warn(`No tap mapping for ${side}.${gesture}`);
             return;
         }
-        logger.info(`Gesture detected: ${side} ${gesture} → ${behavior.type}`);
         // Haptic MUST finish (including ALARM_CLEAR) before other franken commands.
         // Running in parallel with temp updates delayed CLEAR and left a long low rumble
         // after the double-click pattern (du was also too long).
         await playHapticAck(side, pulseCountForGesture(gesture));
         const actionResult = await runGestureAction(side, gesture, behavior, nextDeviceStatus);
         recordGestureResult(side, gesture, actionResult);
-        logger.info(actionResult.message);
+        // Single info line per gesture (haptic is debug elsewhere)
+        logger.info(`Gesture ${side}.${gesture} (${behavior.type}): ${actionResult.message}`);
     }
     /**
      * Only treat a real counter *increase* as a tap.
@@ -66,26 +66,17 @@ export class FrankenMonitor {
     }
     async processGesturesForSide(nextDeviceStatus, side) {
         try {
-            // Prefer higher-count gestures first so a triple doesn't also fire single/double
-            // if firmware stamps multiple fields. singleTap (dismissAlarm) is still checked.
-            const order = ['quadTap', 'tripleTap', 'doubleTap', 'singleTap'];
-            let handled = false;
+            // Higher-count first so a triple/quad doesn't also fire double if firmware
+            // stamps multiple multi-tap fields. Single-tap is not mapped (Pod 4 dac).
+            const order = ['quadTap', 'tripleTap', 'doubleTap'];
             for (const gesture of order) {
                 const previous = this.deviceStatus?.[side]?.taps?.[gesture];
                 const next = nextDeviceStatus[side]?.taps?.[gesture];
                 if (this.isCounterIncrease(previous, next)) {
-                    logger.info(`Tap event: ${side}.${gesture} ${previous} → ${next}`);
+                    logger.debug(`Tap counter: ${side}.${gesture} ${previous} → ${next}`);
                     await this.processGesture(side, gesture, nextDeviceStatus);
-                    handled = true;
                     // One gesture per side per poll — multi-tap timestamps can be close
                     break;
-                }
-            }
-            // Log singleTap stamps when present so we can see dismissAlarm activity
-            if (!handled) {
-                const single = nextDeviceStatus[side]?.taps?.singleTap;
-                if (single !== undefined && single > 0) {
-                    logger.debug(`${side}.singleTap stamp=${single}`);
                 }
             }
         }

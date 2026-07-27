@@ -18,11 +18,8 @@ const defaultSideSettings = {
         }
     },
     taps: {
-        // Pod 4 dac does not expose normal single-taps (see gestureFields.ts).
-        // Practical defaults: double = cool, triple = warm, quad = save to schedule.
-        singleTap: {
-            type: 'none',
-        },
+        // Pod 4: no single-tap over dac. Double cool, triple warm, quad power off (when on).
+        // Any gesture turns the side on when it is off (handled in gestureActions).
         doubleTap: {
             type: 'temperature',
             change: 'decrement',
@@ -34,7 +31,8 @@ const defaultSideSettings = {
             amount: 1,
         },
         quadTap: {
-            type: 'scheduleApply',
+            type: 'power',
+            action: 'off',
         },
     }
 };
@@ -56,24 +54,55 @@ const defaultData = {
         time: '14:00',
     },
 };
+/** Old shipped defaults we replace when migrating off singleTap / scheduleApply-quad */
+function isLegacyTapDefaults(taps) {
+    if (!taps)
+        return true;
+    if ('singleTap' in taps)
+        return true;
+    const doubleTap = taps.doubleTap;
+    const tripleTap = taps.tripleTap;
+    const quadTap = taps.quadTap;
+    // Upstream-ish: double +1, triple none, quad scheduleApply
+    if (doubleTap?.type === 'temperature' &&
+        doubleTap.change === 'increment' &&
+        tripleTap?.type === 'none' &&
+        quadTap?.type === 'scheduleApply') {
+        return true;
+    }
+    // Prior fork generation: double −1, triple +1, quad scheduleApply
+    if (doubleTap?.type === 'temperature' &&
+        doubleTap.change === 'decrement' &&
+        doubleTap.amount === 1 &&
+        tripleTap?.type === 'temperature' &&
+        tripleTap.change === 'increment' &&
+        tripleTap.amount === 1 &&
+        quadTap?.type === 'scheduleApply') {
+        return true;
+    }
+    return false;
+}
 const file = new JSONFile(`${config.lowDbFolder}settingsDB.json`);
 const settingsDB = new Low(file, defaultData);
 await settingsDB.read();
-// One-time upgrade: older installs only had double/triple/quad. Apply the new
-// single–quad defaults once so mappings match the documented product behavior.
-const legacyTapMap = Boolean(settingsDB.data?.left?.taps) &&
-    !Object.prototype.hasOwnProperty.call(settingsDB.data.left.taps, 'singleTap');
-// Allows us to add default values to the settings if users have existing settingsDB.json data
-settingsDB.data = _.merge({}, defaultData, settingsDB.data);
-if (legacyTapMap) {
-    settingsDB.data.left.taps = _.cloneDeep(defaultSideSettings.taps);
-    settingsDB.data.right.taps = _.cloneDeep(defaultSideSettings.taps);
-}
-// Safety: neutralize power gestures until cover-tap detection is validated on this Pod
+// Migrate tap mappings: strip singleTap and adopt multi-tap defaults when still on legacy set
 for (const side of ['left', 'right']) {
-    if (settingsDB.data[side]?.taps?.tripleTap?.type === 'power') {
-        settingsDB.data[side].taps.tripleTap = { type: 'none' };
+    const taps = settingsDB.data?.[side]?.taps;
+    if (isLegacyTapDefaults(taps)) {
+        settingsDB.data[side].taps = _.cloneDeep(defaultSideSettings.taps);
     }
+    else if (taps && 'singleTap' in taps) {
+        delete taps.singleTap;
+    }
+}
+settingsDB.data = _.merge({}, defaultData, settingsDB.data);
+// Ensure each side has only the three multi-tap keys (don't resurrect singleTap)
+for (const side of ['left', 'right']) {
+    settingsDB.data[side].taps = {
+        doubleTap: settingsDB.data[side].taps?.doubleTap ?? defaultSideSettings.taps.doubleTap,
+        tripleTap: settingsDB.data[side].taps?.tripleTap ?? defaultSideSettings.taps.tripleTap,
+        quadTap: settingsDB.data[side].taps?.quadTap ?? defaultSideSettings.taps.quadTap,
+    };
 }
 await settingsDB.write();
 export default settingsDB;
