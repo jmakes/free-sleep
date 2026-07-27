@@ -21,25 +21,63 @@ const GESTURES: { key: Gesture; label: string }[] = [
   { key: 'quadTap', label: 'Quadruple tap' },
 ];
 
-type ActionKind = TapConfigType['type'];
+/**
+ * Flat UI actions — map to TapConfigType without nested type→direction menus.
+ */
+type UiAction =
+  | 'tempIncrease'
+  | 'tempDecrease'
+  | 'powerToggle'
+  | 'scheduleApply'
+  | 'alarm'
+  | 'none';
 
-const ACTION_OPTIONS: { value: ActionKind; label: string }[] = [
-  { value: 'temperature', label: 'Change temperature' },
-  { value: 'power', label: 'Power on/off' },
+const ACTION_OPTIONS: { value: UiAction; label: string }[] = [
+  { value: 'tempDecrease', label: 'Decrease temperature' },
+  { value: 'tempIncrease', label: 'Increase temperature' },
+  { value: 'powerToggle', label: 'Toggle power on/off' },
   { value: 'scheduleApply', label: 'Save temp to schedule (all days)' },
   { value: 'alarm', label: 'Alarm dismiss/snooze' },
   { value: 'none', label: 'Do nothing' },
 ];
 
-function defaultConfigForType(type: ActionKind): TapConfigType {
-  switch (type) {
+function configToUiAction(config: TapConfigType): UiAction {
+  switch (config.type) {
     case 'temperature':
-      return { type: 'temperature', change: 'decrement', amount: 1 };
+      return config.change === 'increment' ? 'tempIncrease' : 'tempDecrease';
     case 'power':
-      return { type: 'power', action: 'off' };
+      // All power variants collapse to one UI choice (stored as toggle when re-saved)
+      return 'powerToggle';
+    case 'scheduleApply':
+      return 'scheduleApply';
+    case 'alarm':
+      return 'alarm';
+    case 'none':
+    default:
+      return 'none';
+  }
+}
+
+function configFromUiAction(action: UiAction, previous?: TapConfigType): TapConfigType {
+  switch (action) {
+    case 'tempIncrease':
+      return {
+        type: 'temperature',
+        change: 'increment',
+        amount: previous?.type === 'temperature' ? previous.amount : 1,
+      };
+    case 'tempDecrease':
+      return {
+        type: 'temperature',
+        change: 'decrement',
+        amount: previous?.type === 'temperature' ? previous.amount : 1,
+      };
+    case 'powerToggle':
+      return { type: 'power', action: 'toggle' };
     case 'scheduleApply':
       return { type: 'scheduleApply' };
     case 'alarm':
+      if (previous?.type === 'alarm') return previous;
       return {
         type: 'alarm',
         behavior: 'dismiss',
@@ -52,13 +90,29 @@ function defaultConfigForType(type: ActionKind): TapConfigType {
   }
 }
 
+function defaultConfigForGesture(gesture: Gesture): TapConfigType {
+  switch (gesture) {
+    case 'doubleTap':
+      return { type: 'temperature', change: 'decrement', amount: 1 };
+    case 'tripleTap':
+      return { type: 'temperature', change: 'increment', amount: 1 };
+    case 'quadTap':
+      return { type: 'power', action: 'toggle' };
+    default:
+      return { type: 'none' };
+  }
+}
+
 function describeConfig(config?: TapConfigType): string {
   if (!config) return '—';
   switch (config.type) {
     case 'temperature':
       return `${config.change === 'increment' ? '+' : '−'}${config.amount}°`;
     case 'power':
-      return `power ${config.action}`;
+      // Prefer plain "toggle power"; keep legacy off/on labels if still stored
+      if (config.action === 'off') return 'power off';
+      if (config.action === 'on') return 'power on';
+      return 'toggle power';
     case 'scheduleApply':
       return 'save to schedule';
     case 'alarm':
@@ -81,11 +135,10 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
   const taps = settings?.[side]?.taps;
 
   const updateTap = (gesture: Gesture, config: TapConfigType) => {
-    // Send full multi-tap map so the server can replace cleanly
     const nextTaps = {
-      doubleTap: taps?.doubleTap ?? defaultConfigForType('temperature'),
-      tripleTap: taps?.tripleTap ?? defaultConfigForType('temperature'),
-      quadTap: taps?.quadTap ?? defaultConfigForType('power'),
+      doubleTap: taps?.doubleTap ?? defaultConfigForGesture('doubleTap'),
+      tripleTap: taps?.tripleTap ?? defaultConfigForGesture('tripleTap'),
+      quadTap: taps?.quadTap ?? defaultConfigForGesture('quadTap'),
       [gesture]: config,
     };
     updateSettings({
@@ -101,13 +154,13 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
         Cover taps
       </Typography>
       <Typography variant="caption" color="text.secondary" display="block" sx={ { mb: 1 } }>
-        Defaults: double −1°, triple +1°, quad power off (when on). Any tap turns the side on
-        if it is off. Haptics: N short ticks for an N-tap. Pod 4 does not report normal single-taps
-        over the local API.
+        Defaults: double −1°, triple +1°, quad toggle power. Any tap turns the side on if it is
+        off. Haptics: N short ticks for an N-tap.
       </Typography>
 
       { GESTURES.map(({ key, label }) => {
-        const config = taps?.[key] ?? defaultConfigForType('none');
+        const config = taps?.[key] ?? defaultConfigForGesture(key);
+        const uiAction = configToUiAction(config);
         return (
           <Accordion key={ key } disableGutters elevation={ 0 } sx={ { bgcolor: 'background.paper' } }>
             <AccordionSummary expandIcon={ <ExpandMoreIcon /> }>
@@ -124,9 +177,9 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
                   <InputLabel>Action</InputLabel>
                   <Select
                     label="Action"
-                    value={ config.type }
+                    value={ uiAction }
                     onChange={ (event) => {
-                      updateTap(key, defaultConfigForType(event.target.value as ActionKind));
+                      updateTap(key, configFromUiAction(event.target.value as UiAction, config));
                     } }
                   >
                     { ACTION_OPTIONS.map((option) => (
@@ -138,56 +191,24 @@ export default function TapControls({ side, settings, updateSettings }: TapContr
                 </FormControl>
 
                 { config.type === 'temperature' && (
-                  <>
-                    <FormControl fullWidth size="small" disabled={ isUpdating }>
-                      <InputLabel>Direction</InputLabel>
-                      <Select
-                        label="Direction"
-                        value={ config.change }
-                        onChange={ (event) => {
-                          updateTap(key, {
-                            ...config,
-                            change: event.target.value as 'increment' | 'decrement',
-                          });
-                        } }
-                      >
-                        <MenuItem value="decrement">Decrease</MenuItem>
-                        <MenuItem value="increment">Increase</MenuItem>
-                      </Select>
-                    </FormControl>
-                    <TextField
-                      label="Degrees (°F)"
-                      type="number"
-                      size="small"
-                      disabled={ isUpdating }
-                      value={ config.amount }
-                      inputProps={ { min: 0, max: 10, step: 1 } }
-                      onChange={ (event) => {
-                        const amount = Math.min(10, Math.max(0, Number(event.target.value) || 0));
-                        updateTap(key, { ...config, amount });
-                      } }
-                    />
-                  </>
+                  <TextField
+                    label="Degrees (°F)"
+                    type="number"
+                    size="small"
+                    disabled={ isUpdating }
+                    value={ config.amount }
+                    inputProps={ { min: 0, max: 10, step: 1 } }
+                    onChange={ (event) => {
+                      const amount = Math.min(10, Math.max(0, Number(event.target.value) || 0));
+                      updateTap(key, { ...config, amount });
+                    } }
+                  />
                 ) }
 
                 { config.type === 'power' && (
-                  <FormControl fullWidth size="small" disabled={ isUpdating }>
-                    <InputLabel>Power action</InputLabel>
-                    <Select
-                      label="Power action"
-                      value={ config.action }
-                      onChange={ (event) => {
-                        updateTap(key, {
-                          ...config,
-                          action: event.target.value as 'off' | 'on' | 'toggle',
-                        });
-                      } }
-                    >
-                      <MenuItem value="off">Turn off</MenuItem>
-                      <MenuItem value="on">Turn on</MenuItem>
-                      <MenuItem value="toggle">Toggle</MenuItem>
-                    </Select>
-                  </FormControl>
+                  <Typography variant="caption" color="text.secondary">
+                    Toggles this side on/off. (If the side is already off, any tap turns it on first.)
+                  </Typography>
                 ) }
 
                 { config.type === 'scheduleApply' && (

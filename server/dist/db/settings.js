@@ -36,7 +36,7 @@ const defaultSideSettings = {
         },
         quadTap: {
             type: 'power',
-            action: 'off',
+            action: 'toggle',
         },
     }
 };

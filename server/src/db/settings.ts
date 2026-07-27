@@ -39,7 +39,7 @@ const defaultSideSettings: SideSettings = {
     },
     quadTap: {
       type: 'power',
-      action: 'off',
+      action: 'toggle',
     },
   }
 };
