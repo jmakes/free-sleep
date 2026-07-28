@@ -18,6 +18,7 @@ import metricsStats from '../routes/metrics/stats.js';
 import logs from '../routes/logs/logs.js';
 import serverStatus from '../routes/serverStatus/serverStatus.js';
 import gestures from '../routes/gestures/gestures.js';
+import sensors from '../routes/sensors/sensors.js';
 import logger from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,6 +41,7 @@ export default function (app: Express) {
   app.use('/api/logs', logs);
   app.use('/api/serverStatus', serverStatus);
   app.use('/api/gestures', gestures);
+  app.use('/api/sensors', sensors);
   app.use('/api', (req: Request, res: Response) => {
     res.status(404).json({ error: { message: 'Not Found' } });
   });
