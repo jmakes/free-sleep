@@ -130,7 +130,27 @@ def _rename_keys(data: dict):
 def _debug_data(data: dict):
     for key in data:
         if isinstance(data[key], list) and len(data[key]) > 0:
-            logger.info(f'{key} - {data[key][0]}')
+            # Sample only — full piezo arrays are huge and flood free-sleep logs
+            sample = data[key][0]
+            if isinstance(sample, dict):
+                summary = {
+                    k: (f'array(len={len(v)})' if hasattr(v, '__len__') and not isinstance(v, (str, dict)) else v)
+                    for k, v in sample.items()
+                    if k in ('type', 'ts', 'freq', 'adc', 'gain', 'status') or k in ('right1', 'left1', 'right', 'left')
+                }
+                # Prefer short summary over dumping multi-thousand int arrays
+                if any(hasattr(sample.get(k), '__len__') and not isinstance(sample.get(k), (str, dict))
+                       for k in ('right1', 'left1', 'right2', 'left2')):
+                    lengths = {
+                        k: len(sample[k])
+                        for k in ('right1', 'left1', 'right2', 'left2')
+                        if k in sample and hasattr(sample[k], '__len__')
+                    }
+                    logger.debug(f'{key} sample ts={sample.get("ts")} arrays={lengths}')
+                else:
+                    logger.debug(f'{key} - {summary or sample}')
+            else:
+                logger.debug(f'{key} - {sample}')
         elif not isinstance(data[key], list):
             logger.warning(f'Unexpected type for loading raw file {type(data[key])}')
 

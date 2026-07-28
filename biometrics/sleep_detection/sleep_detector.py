@@ -199,7 +199,7 @@ def build_sleep_records(merged_df: pd.DataFrame, side: Side, max_gap_in_minutes:
     return sleep_records
 
 
-def detect_sleep(side: Side, start_time: datetime, end_time: datetime, folder_path: str) -> pd.DataFrame:
+def detect_sleep(side: Side, start_time: datetime, end_time: datetime, folder_path: str) -> Tuple[pd.DataFrame, int]:
     expected_row_count = int((end_time - start_time).total_seconds())
     logger.info(f"Detecting sleep interval for {side} side | {start_time.isoformat()} -> {end_time.isoformat()} | Expected row count: {expected_row_count:,}")
 
@@ -244,13 +244,27 @@ def detect_sleep(side: Side, start_time: datetime, end_time: datetime, folder_pa
     )
 
     merged_df[f'final_{side}_occupied'] = merged_df[f'piezo_{side}1_presence'] + merged_df[f'cap_{side}_occupied']
+
+    # Diagnostics when detection fails (both sensors must agree for occupancy == 2)
+    occupied_both = int((merged_df[f'final_{side}_occupied'] == 2).sum())
+    piezo_only = int((merged_df[f'piezo_{side}1_presence'] == 1).sum())
+    cap_only = int((merged_df[f'cap_{side}_occupied'] == 1).sum())
+    total_rows = len(merged_df)
+    logger.info(
+        f'Presence summary {side}: rows={total_rows:,} both={occupied_both:,} '
+        f'piezo={piezo_only:,} cap={cap_only:,}'
+    )
+
     sleep_records = build_sleep_records(merged_df, side, max_gap_in_minutes=15)
     if len(sleep_records) == 0:
-        logger.warning(f'No sleep periods found for {side} side! {start_time} -> {end_time} ')
+        logger.warning(
+            f'No sleep periods found for {side} side! {start_time} -> {end_time} '
+            f'(need continuous presence >3h with gaps ≤15m; both piezo+cap occupied)'
+        )
     else:
         insert_sleep_records(sleep_records)
     # Cleanup
-    return merged_df
+    return merged_df, len(sleep_records)
 
 
 
@@ -270,7 +284,7 @@ def detect_movement(side: Side, merged_df: pd.DataFrame):
     # Set timestamp as index for resampling
     movement_df.set_index('timestamp', inplace=True)
     # Resample into 2-minute intervals, keeping the max value
-    resampled_df = movement_df.resample('2T').max().dropna().reset_index()
+    resampled_df = movement_df.resample('2min').max().dropna().reset_index()
 
     resampled_df.drop(columns=[f'{side}_out', f'{side}_cen', f'{side}_in'], inplace=True)
     resampled_df['side'] = side

@@ -67,12 +67,10 @@ function formatShiftedHour(hour: number): string {
 // Format X-axis ticks => "MON", "TUE", etc
 // ----------------------------------------------------------------------
 function formatDayLabel(dateString: string): string {
+  // Include month/day so nights are unambiguous (e.g. "SUN 7/26")
   const localTime = moment(dateString).local();
-  if (localTime.hour() < 6) {
-    return localTime.subtract(1, 'day').format('ddd').toUpperCase();
-  } else {
-    return localTime.format('ddd').toUpperCase();
-  }
+  const night = localTime.hour() < 6 ? localTime.clone().subtract(1, 'day') : localTime;
+  return night.format('ddd M/D').toUpperCase();
 }
 
 // ----------------------------------------------------------------------

@@ -104,7 +104,7 @@ if __name__ == "__main__":
             update_health(job_key, 'failed', message)
             raise MemoryError(message)
 
-        merged_df = detect_sleep(
+        merged_df, sleep_count = detect_sleep(
             args.side,
             args.start_time,
             args.end_time,
@@ -112,8 +112,25 @@ if __name__ == "__main__":
         )
 
         detect_movement(args.side, merged_df)
-        # Message is visible in Status / services UI
-        update_health(job_key, 'healthy', f'Finished analyzing {args.side} side')
+
+        # Presence requires piezo+cap agreement; sleep needs >3h continuous (≤15m gaps)
+        occupied_col = f'final_{args.side}_occupied'
+        both = int((merged_df[occupied_col] == 2).sum()) if occupied_col in merged_df.columns else 0
+        if sleep_count > 0:
+            finish_msg = f'Finished analyzing {args.side}: saved {sleep_count} sleep record(s)'
+        elif both == 0:
+            finish_msg = (
+                f'No occupancy on {args.side} (need piezo+cap). '
+                f'Check calibration / raw sensor data for the night.'
+            )
+        else:
+            finish_msg = (
+                f'Occupancy seen on {args.side} but no sleep period >3h '
+                f'(gaps ≤15m). Check bed presence thresholds.'
+            )
+        update_health(job_key, 'healthy', finish_msg)
+        if sleep_count == 0:
+            logger.warning(finish_msg)
 
         logger.debug(f"END Memory Usage: {get_memory_usage_unix():.2f} MB")
         logger.debug(f"END Free Memory: {get_available_memory_mb()} MB")

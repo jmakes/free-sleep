@@ -42,11 +42,16 @@ interface SleepRecordProps {
   refetch?: () => void;
 }
 
-function formatDayLabel(dateString: string): string {
+/** Night of sleep label: use calendar day before 6am as "the sleep night" */
+function formatSleepNight(dateString: string): string {
   const localTime = moment(dateString).local();
-  return localTime.hour() < 6
-    ? localTime.subtract(1, 'day').format('dddd')
-    : localTime.format('dddd');
+  const night = localTime.hour() < 6 ? localTime.clone().subtract(1, 'day') : localTime;
+  return night.format('ddd, MMM D');
+}
+
+/** Full date + weekday for period display */
+function formatDateTimeLabel(dateString: string): string {
+  return moment(dateString).local().format('ddd, MMM D · h:mm A');
 }
 
 export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordProps) {
@@ -80,8 +85,9 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
     sleepRecord.left_bed_at
   );
 
-  const startDay = formatDayLabel(sleepRecord.entered_bed_at);
-  const endDay = formatDayLabel(sleepRecord.left_bed_at);
+  const sleepNight = formatSleepNight(sleepRecord.entered_bed_at);
+  const enteredLabel = formatDateTimeLabel(sleepRecord.entered_bed_at);
+  const leftLabel = formatDateTimeLabel(sleepRecord.left_bed_at);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this sleep record?')) {
@@ -141,7 +147,14 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
             value: sideLabel,
             icon: <PersonIcon fontSize="small" />,
           },
-          { label: 'Period', value: `${startDay} - ${endDay}` },
+          {
+            label: 'Night of',
+            value: sleepNight,
+          },
+          {
+            label: 'Period',
+            value: `${enteredLabel} → ${leftLabel}`,
+          },
           { label: 'Bedtime', value: bedtime, icon: <BedtimeIcon fontSize="small" /> },
           { label: 'Wake time', value: wakeTime, icon: <AccessAlarmIcon fontSize="small" /> },
           { label: 'Duration', value: sleepDuration, icon: <HourglassBottomIcon fontSize="small" /> },
