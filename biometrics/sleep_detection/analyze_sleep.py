@@ -111,22 +111,27 @@ if __name__ == "__main__":
             FOLDER_PATH
         )
 
+        # Snapshot occupancy BEFORE movement (which used to wipe the frame)
+        occupied_col = f'final_{args.side}_occupied'
+        occupied_rows = (
+            int((merged_df[occupied_col] == 2).sum())
+            if occupied_col in merged_df.columns
+            else 0
+        )
+
         detect_movement(args.side, merged_df)
 
-        # Presence requires piezo+cap agreement; sleep needs >3h continuous (≤15m gaps)
-        occupied_col = f'final_{args.side}_occupied'
-        both = int((merged_df[occupied_col] == 2).sum()) if occupied_col in merged_df.columns else 0
         if sleep_count > 0:
             finish_msg = f'Finished analyzing {args.side}: saved {sleep_count} sleep record(s)'
-        elif both == 0:
+        elif occupied_rows == 0:
             finish_msg = (
-                f'No occupancy on {args.side} (need piezo+cap). '
-                f'Check calibration / raw sensor data for the night.'
+                f'No occupancy on {args.side}. '
+                f'Check biometrics stream / RAW files for the night.'
             )
         else:
             finish_msg = (
-                f'Occupancy seen on {args.side} but no sleep period >3h '
-                f'(gaps ≤15m). Check bed presence thresholds.'
+                f'Occupancy on {args.side} ({occupied_rows:,} samples) but no sleep '
+                f'period >3h with gaps ≤15m.'
             )
         update_health(job_key, 'healthy', finish_msg)
         if sleep_count == 0:

@@ -229,14 +229,39 @@ def insert_sleep_records(sleep_records: List[SleepRecord]):
 
 
 def insert_movement_df(movement_df: pd.DataFrame):
+    """
+    Upsert movement rows. Re-running analyze_sleep for the same night must not
+    fail on UNIQUE(side, timestamp).
+    """
     try:
+        if movement_df is None or movement_df.empty:
+            logger.debug('No movement rows to insert')
+            return
+
         logger.debug(f'Inserting {movement_df.shape[0]} rows into movement table...')
-        movement_df['timestamp'] = pd.to_datetime(movement_df['timestamp']).astype(int) // 10 ** 9
+        df = movement_df.copy()
+        df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10 ** 9
 
-        # Upload to SQLite
-        movement_df.to_sql("movement", conn, if_exists='append', index=False)
+        if 'side' not in df.columns or 'timestamp' not in df.columns:
+            logger.error(f'movement_df missing side/timestamp columns: {list(df.columns)}')
+            return
 
-        logger.debug('Finished inserting rows')
+        # Drop existing rows in this side+time range so re-analysis is idempotent
+        side = str(df['side'].iloc[0])
+        ts_min = int(df['timestamp'].min())
+        ts_max = int(df['timestamp'].max())
+        cursor = conn.cursor()
+        cursor.execute(
+            'DELETE FROM movement WHERE side = ? AND timestamp >= ? AND timestamp <= ?',
+            (side, ts_min, ts_max),
+        )
+        deleted = cursor.rowcount if cursor.rowcount is not None else 0
+        if deleted:
+            logger.debug(f'Removed {deleted} existing movement row(s) for {side} before re-insert')
+        cursor.close()
+
+        df.to_sql('movement', conn, if_exists='append', index=False)
+        logger.debug('Finished inserting movement rows')
 
     except Exception as error:
         logger.error('Failed to insert movement df!')
@@ -248,7 +273,12 @@ def insert_movement_df(movement_df: pd.DataFrame):
                 movement_days=max(7, MOVEMENT_RETENTION_DAYS // 2),
             )
             try:
-                movement_df.to_sql("movement", conn, if_exists='append', index=False)
+                movement_df_retry = movement_df.copy()
+                movement_df_retry['timestamp'] = (
+                    pd.to_datetime(movement_df_retry['timestamp']).astype(int) // 10 ** 9
+                )
+                movement_df_retry.to_sql('movement', conn, if_exists='append', index=False)
                 logger.info('Movement insert succeeded after emergency prune')
             except Exception as retry_error:
                 logger.error(f'Movement insert still failing after prune: {retry_error}')
+

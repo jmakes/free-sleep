@@ -4,5 +4,5 @@
   "githubOwner": "jmakes",
   "githubRepo": "free-sleep",
   "updateCheckUrl": "https://raw.githubusercontent.com/jmakes/free-sleep/main/server/src/serverInfo.json",
-  "commit": "a6a777255e8b9bd213670c0af15640218167330e"
+  "commit": "0259a7c0be738a98f68ba3d8932d5086a570959f"
 }

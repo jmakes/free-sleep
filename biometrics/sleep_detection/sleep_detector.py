@@ -243,23 +243,44 @@ def detect_sleep(side: Side, start_time: datetime, end_time: datetime, folder_pa
         clean=False
     )
 
-    merged_df[f'final_{side}_occupied'] = merged_df[f'piezo_{side}1_presence'] + merged_df[f'cap_{side}_occupied']
+    piezo_col = f'piezo_{side}1_presence'
+    cap_col = f'cap_{side}_occupied'
+    total_rows = max(len(merged_df), 1)
+    piezo_count = int((merged_df[piezo_col] == 1).sum())
+    cap_count = int((merged_df[cap_col] == 1).sum())
+    both_count = int(((merged_df[piezo_col] == 1) & (merged_df[cap_col] == 1)).sum())
+    piezo_rate = piezo_count / total_rows
+    cap_rate = cap_count / total_rows
 
-    # Diagnostics when detection fails (both sensors must agree for occupancy == 2)
-    occupied_both = int((merged_df[f'final_{side}_occupied'] == 2).sum())
-    piezo_only = int((merged_df[f'piezo_{side}1_presence'] == 1).sum())
-    cap_only = int((merged_df[f'cap_{side}_occupied'] == 1).sum())
-    total_rows = len(merged_df)
+    # Presence intervals require final_occupied == 2.
+    # Prefer piezo+cap agreement, but cap baselines are often wrong (calibrated while
+    # occupied, drifted, etc.). When piezo strongly indicates presence and cap almost
+    # never does, fall back to piezo-only so real nights are not discarded.
+    if cap_rate < 0.05 and piezo_rate > 0.20:
+        logger.warning(
+            f'Cap presence nearly absent for {side} '
+            f'(cap={cap_rate:.1%}, piezo={piezo_rate:.1%}) — using piezo-only occupancy'
+        )
+        merged_df[f'final_{side}_occupied'] = (merged_df[piezo_col] * 2).astype(int)
+        occupancy_mode = 'piezo-only'
+    else:
+        merged_df[f'final_{side}_occupied'] = (
+            merged_df[piezo_col] + merged_df[cap_col]
+        ).astype(int)
+        occupancy_mode = 'piezo+cap'
+
+    occupied_final = int((merged_df[f'final_{side}_occupied'] == 2).sum())
     logger.info(
-        f'Presence summary {side}: rows={total_rows:,} both={occupied_both:,} '
-        f'piezo={piezo_only:,} cap={cap_only:,}'
+        f'Presence summary {side}: mode={occupancy_mode} rows={total_rows:,} '
+        f'final_occupied={occupied_final:,} both={both_count:,} '
+        f'piezo={piezo_count:,} cap={cap_count:,}'
     )
 
     sleep_records = build_sleep_records(merged_df, side, max_gap_in_minutes=15)
     if len(sleep_records) == 0:
         logger.warning(
             f'No sleep periods found for {side} side! {start_time} -> {end_time} '
-            f'(need continuous presence >3h with gaps ≤15m; both piezo+cap occupied)'
+            f'(need continuous presence >3h with gaps ≤15m; mode={occupancy_mode})'
         )
     else:
         insert_sleep_records(sleep_records)
@@ -269,34 +290,44 @@ def detect_sleep(side: Side, start_time: datetime, end_time: datetime, folder_pa
 
 
 def detect_movement(side: Side, merged_df: pd.DataFrame):
+    """
+    Derive movement series and insert into SQLite.
+    Does NOT destroy merged_df — callers may still need it.
+    """
     logger.debug('Logging movement...')
-    merged_df.reset_index(inplace=True)
-    merged_df.sort_values('ts', inplace=True)
-    merged_df.drop_duplicates(subset=["ts"], inplace=True)
+    work = merged_df.copy()
+    if work.index.name == 'ts' or 'ts' not in work.columns:
+        work = work.reset_index()
+    if 'ts' not in work.columns and 'index' in work.columns:
+        work.rename(columns={'index': 'ts'}, inplace=True)
 
-    movement_df = merged_df[[f'{side}_out', f'{side}_cen', f'{side}_in']].diff().abs()
-    # Optionally sum across sensors
+    work.sort_values('ts', inplace=True)
+    work.drop_duplicates(subset=['ts'], inplace=True)
+
+    sensor_cols = [f'{side}_out', f'{side}_cen', f'{side}_in']
+    missing = [c for c in sensor_cols if c not in work.columns]
+    if missing:
+        logger.warning(f'Skipping movement insert — missing cap columns: {missing}')
+        return
+
+    movement_df = work[sensor_cols].diff().abs()
     movement_df['total_movement'] = movement_df.sum(axis=1)
-
-    # Add timestamps for plotting
-    movement_df['timestamp'] = merged_df['ts']
-
-    # Set timestamp as index for resampling
+    movement_df['timestamp'] = work['ts']
     movement_df.set_index('timestamp', inplace=True)
-    # Resample into 2-minute intervals, keeping the max value
-    resampled_df = movement_df.resample('2min').max().dropna().reset_index()
 
-    resampled_df.drop(columns=[f'{side}_out', f'{side}_cen', f'{side}_in'], inplace=True)
+    resampled_df = movement_df.resample('2min').max().dropna().reset_index()
+    resampled_df.drop(columns=sensor_cols, inplace=True, errors='ignore')
     resampled_df['side'] = side
 
-    resampled_df.to_csv('/home/dac/free-sleep/server/free-sleep-data/movement.csv', index=False)
+    try:
+        resampled_df.to_csv(
+            '/home/dac/free-sleep/server/free-sleep-data/movement.csv',
+            index=False,
+        )
+    except Exception as error:
+        logger.debug(f'Could not write movement.csv: {error}')
 
-    # Only count changes > 15
-    # movement_df = movement_df[movement_df['total_movement'] > 15]
     insert_movement_df(resampled_df)
-    movement_df.drop(movement_df.index, inplace=True)
-    del movement_df
-    merged_df.drop(merged_df.index, inplace=True)
-    del merged_df
     gc.collect()
+
 

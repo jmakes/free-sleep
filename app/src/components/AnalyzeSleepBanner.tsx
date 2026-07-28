@@ -7,8 +7,9 @@ import { Side } from '@state/appStore.tsx';
 
 /**
  * Global banner while sleep analysis is running for either side.
- * Polls services; Node marks jobs "started" when analysis launches, Python
- * sets healthy/failed when finished.
+ *
+ * Always polls slowly so we notice a job that starts after mount
+ * (e.g. Status page "Analyze sleep" button). Speeds up while running.
  */
 export default function AnalyzeSleepBanner() {
   const { data: settings } = useSettings();
@@ -19,12 +20,13 @@ export default function AnalyzeSleepBanner() {
       const response = await axios.get<Services>('/services');
       return response.data;
     },
-    // Always share cache with useServices; poll faster while analyzing
+    // Always poll — otherwise a job started while idle never flips the banner on
     refetchInterval: (query) => {
       const data = query.state.data;
       const left = data?.biometrics?.jobs?.analyzeSleepLeft?.status;
       const right = data?.biometrics?.jobs?.analyzeSleepRight?.status;
-      return left === 'started' || right === 'started' ? 3_000 : false;
+      const running = left === 'started' || right === 'started';
+      return running ? 2_000 : 8_000;
     },
   });
 
