@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Box,
   Card,
+  Chip,
   Typography,
   IconButton,
   Dialog,
@@ -14,13 +15,15 @@ import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { SleepRecord } from '../../../server/src/db/sleepRecordsSchema.ts';
 import moment from 'moment-timezone';
 import { deleteSleepRecord } from '@api/sleep.ts';
-import { updateSleepRecord } from '@api/sleep.ts'; // Assuming you have this function
+import { updateSleepRecord } from '@api/sleep.ts';
 import BedtimeIcon from '@mui/icons-material/Bedtime';
 import AccessAlarmIcon from '@mui/icons-material/AccessAlarm';
 import EditIcon from '@mui/icons-material/Edit';
 import TransferWithinAStationIcon from '@mui/icons-material/TransferWithinAStation';
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import DeleteIcon from '@mui/icons-material/Delete';
+import PersonIcon from '@mui/icons-material/Person';
+import { useSettings } from '@api/settings.ts';
 
 
 // Helper to format time
@@ -47,6 +50,7 @@ function formatDayLabel(dateString: string): string {
 }
 
 export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordProps) {
+  const { data: settings } = useSettings();
   const [editOpen, setEditOpen] = useState(false);
   const [enteredBedAt, setEnteredBedAt] = useState(moment(sleepRecord?.entered_bed_at));
   const [leftBedAt, setLeftBedAt] = useState(moment(sleepRecord?.left_bed_at));
@@ -58,6 +62,16 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
   }, [sleepRecord]);
 
   if (!sleepRecord) return null;
+
+  const sideKey = (sleepRecord.side === 'left' || sleepRecord.side === 'right')
+    ? sleepRecord.side
+    : undefined;
+  const sideName = sideKey
+    ? (settings?.[sideKey]?.name?.trim() || sideKey.charAt(0).toUpperCase() + sideKey.slice(1))
+    : (sleepRecord.side || 'Unknown');
+  const sideLabel = sideKey
+    ? `${sideName} · ${sideKey === 'left' ? 'Left' : 'Right'}`
+    : sideName;
 
   const bedtime = formatTime(sleepRecord.entered_bed_at);
   const wakeTime = formatTime(sleepRecord.left_bed_at);
@@ -107,12 +121,26 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
         </IconButton>
       </Box>
 
-      <Typography variant="h6" gutterBottom>
-        Sleep Summary
-      </Typography>
+      <Box display="flex" alignItems="center" gap={ 1 } mb={ 1 } flexWrap="wrap">
+        <Typography variant="h6">
+          Sleep Summary
+        </Typography>
+        <Chip
+          size="small"
+          icon={ <PersonIcon /> }
+          label={ sideLabel }
+          color="primary"
+          variant="outlined"
+        />
+      </Box>
 
       <Box display="flex" flexDirection="column" gap={ 1 }>
         { [
+          {
+            label: 'Side',
+            value: sideLabel,
+            icon: <PersonIcon fontSize="small" />,
+          },
           { label: 'Period', value: `${startDay} - ${endDay}` },
           { label: 'Bedtime', value: bedtime, icon: <BedtimeIcon fontSize="small" /> },
           { label: 'Wake time', value: wakeTime, icon: <AccessAlarmIcon fontSize="small" /> },

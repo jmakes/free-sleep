@@ -8,7 +8,32 @@ import memoryDB from '../db/memoryDB.js';
 
 const DEBOUNCE_MS = 10 * 60 * 1000;
 
-export const executeAnalyzeSleep = (side: Side, startTime: string, endTime: string): void => {
+function jobKeyForSide(side: Side): 'analyzeSleepLeft' | 'analyzeSleepRight' {
+  return side === 'left' ? 'analyzeSleepLeft' : 'analyzeSleepRight';
+}
+
+/** Mark biometrics job started so the GUI can show progress immediately */
+async function markAnalyzeJobStarted(side: Side, message: string): Promise<void> {
+  await servicesDB.read();
+  const jobKey = jobKeyForSide(side);
+  servicesDB.data.biometrics.jobs[jobKey] = {
+    ...servicesDB.data.biometrics.jobs[jobKey],
+    status: 'started',
+    message,
+    timestamp: new Date().toISOString(),
+  };
+  await servicesDB.write();
+}
+
+export const executeAnalyzeSleep = async (
+  side: Side,
+  startTime: string,
+  endTime: string,
+): Promise<void> => {
+  await markAnalyzeJobStarted(
+    side,
+    `Analyzing ${side} sleep (${moment(startTime).format('MMM D h:mm A')} – ${moment(endTime).format('h:mm A')})…`,
+  );
   executePythonScript({
     script: '/home/dac/free-sleep/biometrics/sleep_detection/analyze_sleep.py',
     args: [
@@ -92,7 +117,7 @@ export async function maybeAnalyzeSleepOnPowerOff(side: Side): Promise<void> {
     const endTime = moment().add(1, 'hours').toISOString();
 
     logger.info(`Analyze sleep ${side}: starting window ${startTime} → ${endTime}`);
-    executeAnalyzeSleep(side, startTime, endTime);
+    await executeAnalyzeSleep(side, startTime, endTime);
   } catch (error) {
     logger.error(
       `Analyze sleep ${side} failed to start: ${error instanceof Error ? error.message : String(error)}`

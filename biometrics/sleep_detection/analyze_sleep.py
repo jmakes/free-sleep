@@ -112,7 +112,8 @@ if __name__ == "__main__":
         )
 
         detect_movement(args.side, merged_df)
-        update_health(job_key, 'healthy', '')
+        # Message is visible in Status / services UI
+        update_health(job_key, 'healthy', f'Finished analyzing {args.side} side')
 
         logger.debug(f"END Memory Usage: {get_memory_usage_unix():.2f} MB")
         logger.debug(f"END Free Memory: {get_available_memory_mb()} MB")

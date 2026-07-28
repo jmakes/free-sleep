@@ -5,8 +5,6 @@ import { DeepPartial } from 'ts-essentials';
 import { useAppStore } from '@state/appStore.tsx';
 import { useSettings } from '@api/settings.ts';
 import { useState } from 'react';
-import { useServices } from '@api/services.ts';
-import AnalyzeSleepNotification from './AnalyzeSleepNotification.tsx';
 import { useControlTempStore } from './controlTempStore.tsx';
 
 
@@ -18,16 +16,11 @@ type PowerButtonProps = {
 export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
   const { isUpdating, setIsUpdating, side } = useAppStore();
   const { data: settings } = useSettings();
-  const { data: services } = useServices();
   const deviceStatusStore = useControlTempStore(state => state.deviceStatus);
   const setDeviceStatus = useControlTempStore(state => state.setDeviceStatus);
   const isInAwayMode = settings?.[side].awayMode;
   const disabled = isUpdating || isInAwayMode;
-  const [showAnalyzeNotification, setShowAnalyzeNotification] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const analyzeEnabled = settings?.[side]?.analyzeSleep?.enabled ?? true;
-  const biometricsEnabled = services?.biometrics?.enabled === true;
 
   const handleOnClick = (powerOn: boolean) => {
     setErrorMessage(null);
@@ -60,12 +53,7 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
             );
           }
         }
-        // Server auto-runs analyze on power-off when the side setting allows it.
-        // Surface a brief "analyzing" notice when that path is active.
-        if (!powerOn && analyzeEnabled && biometricsEnabled) {
-          setShowAnalyzeNotification(true);
-          setTimeout(() => setShowAnalyzeNotification(false), 30_000);
-        }
+        // Analyze-sleep progress is shown via AnalyzeSleepBanner (services job status)
       })
       .catch(error => {
         console.error(error);
@@ -94,11 +82,6 @@ export default function PowerButton({ isOn, refetch }: PowerButtonProps) {
           <Alert severity="error" onClose={ () => setErrorMessage(null) }>
             { errorMessage }
           </Alert>
-        )
-      }
-      {
-        showAnalyzeNotification && (
-          <AnalyzeSleepNotification />
         )
       }
     </Box>

@@ -21,6 +21,8 @@ import { useVitalsRecords } from '@api/vitals.ts';
 import { useMovementRecords } from '@api/movement.ts';
 import MovementChart from '@components/MovementChart.tsx';
 import ErrorBoundary from '@components/ErrorBoundary.tsx';
+import { useSettings } from '@api/settings.ts';
+import SideControl from '@components/SideControl.tsx';
 
 
 const NoData = () => {
@@ -36,6 +38,8 @@ const NoData = () => {
 export default function SleepPage() {
   const { width = 300, ref } = useResizeDetector();
   const { side } = useAppStore();
+  const { data: settings } = useSettings();
+  const sideName = settings?.[side]?.name?.trim() || (side === 'left' ? 'Left' : 'Right');
   const [startTime, setStartTime] = useState(moment().subtract(7, 'days'));
   const [endTime, setEndTime] = useState(moment().add(2, 'day'));
   const [selectedSleepRecord, setSelectedSleepRecord] = useState<SleepRecord | undefined>(undefined);
@@ -93,6 +97,10 @@ export default function SleepPage() {
     <ErrorBoundary componentName="Sleep page">
       <PageContainer containerProps={ { ref } } sx={ { mb: 15, gap: 1, mt: 0 } }>
         <Header title="Sleep" icon={ <BedIcon/> }/>
+        <SideControl />
+        <Typography variant="body2" color="text.secondary" sx={ { textAlign: 'center' } }>
+          Showing sleep for { sideName } ({ side })
+        </Typography>
         <Box
           sx={ {
             display: 'flex',
