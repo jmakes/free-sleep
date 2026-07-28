@@ -81,10 +81,16 @@ function isAllowedOrigin(origin: string | undefined): boolean {
 }
 
 export default function (app: Express) {
-  // High-frequency poll endpoints — demote to debug so logs stay readable
-  const quietRequestPaths = [
+  // High-frequency / routine endpoints — demote to debug so logs stay readable
+  const quietRequestPrefixes = [
     '/api/gestures/recent',
     '/api/metrics/presence',
+    '/api/sensors/live',
+    '/api/deviceStatus',
+    '/api/services',
+    '/api/serverStatus',
+    '/api/settings',
+    '/api/schedules',
   ];
 
   app.use((req, res, next) => {
@@ -94,8 +100,12 @@ export default function (app: Express) {
     res.on('finish', () => {
       const duration = Date.now() - startTime;
       const line = `${req.method} ${req.originalUrl} - ${res.statusCode} - ${duration}ms`;
-      const isQuiet = quietRequestPaths.some((path) => req.originalUrl.startsWith(path));
-      if (isQuiet) {
+      const pathOnly = req.originalUrl.split('?')[0];
+      const isQuiet = quietRequestPrefixes.some(
+        (prefix) => pathOnly === prefix || pathOnly.startsWith(`${prefix}/`) || pathOnly.startsWith(prefix)
+      );
+      // Still surface slow or failed requests at info
+      if (isQuiet && res.statusCode < 400 && duration < 2_000) {
         logger.debug(line);
       } else {
         logger.info(line);

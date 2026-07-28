@@ -21,7 +21,7 @@ import { useAppStore } from '@state/appStore.tsx';
 import { useSettings } from '@api/settings.ts';
 import { fetchSensorLive, SideSensorSnapshot } from '@api/sensors.ts';
 
-const POLL_MS = 750;
+const POLL_MS = 1_500;
 
 function heatColor(value: number, baseline: number, span: number): string {
   // Map deviation from a soft baseline into blue → green → amber → red
@@ -293,13 +293,20 @@ export default function SensorsPage() {
       </Stack>
 
       <Typography variant="caption" color="text.secondary" sx={ { maxWidth: 420, textAlign: 'center' } }>
-        Reads the latest Pod .RAW tail only while streaming (does not keep a permanent
-        open stream). Cap = out / cen / in load sensors; piezo = high-rate strip at chest.
+        Polls the latest Pod <code>.RAW</code> file while streaming. Does <strong>not</strong> require
+        the side to be powered on or someone in bed — empty-bed samples still produce cap/piezo
+        readings. RAW capture usually needs the Pod offline / cloud blocked, and biometrics enabled.
       </Typography>
 
       { pollError && (
         <Alert severity="warning" sx={ { width: '100%', maxWidth: 420 } }>
           { pollError }
+        </Alert>
+      ) }
+
+      { running && snapshot && !pollError && !snapshot.cap && !snapshot.piezo1 && (
+        <Alert severity="info" sx={ { width: '100%', maxWidth: 420 } }>
+          Connected but no frames yet. Waiting for capSense / piezo-dual in the RAW tail…
         </Alert>
       ) }
 

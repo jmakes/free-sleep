@@ -83,13 +83,16 @@ function waitForValidDateAndSetupJobs() {
 // Monitor the JSON file and refresh jobs on change
 chokidar.watch(config.lowDbFolder).on('change', (changedPath) => {
     const fileName = path.basename(changedPath);
-    if (fileName === 'servicesDB.json') {
-        logger.info(`Skipping restarting jobs for DB change: ${fileName}`);
+    // servicesDB is updated frequently by biometrics health; never reschedule jobs for it
+    // Also ignore lowdb temp files (.servicesDB.json.tmp, etc.)
+    if (fileName === 'servicesDB.json' ||
+        fileName.startsWith('.') ||
+        fileName.endsWith('.tmp') ||
+        fileName.includes('servicesDB')) {
+        logger.debug(`Skipping job reload for DB change: ${fileName}`);
         return;
     }
-    else {
-        logger.info(`Detected DB change, reloading... ${fileName}`);
-    }
+    logger.info(`Detected DB change, reloading... ${fileName}`);
     if (serverStatus.status.systemDate.status === 'healthy') {
         void setupJobs();
     }
