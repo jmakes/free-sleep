@@ -252,28 +252,58 @@ def detect_sleep(side: Side, start_time: datetime, end_time: datetime, folder_pa
     piezo_rate = piezo_count / total_rows
     cap_rate = cap_count / total_rows
 
-    # Presence intervals require final_occupied == 2.
-    # Prefer piezo+cap agreement, but cap baselines are often wrong (calibrated while
-    # occupied, drifted, etc.). When piezo strongly indicates presence and cap almost
-    # never does, fall back to piezo-only so real nights are not discarded.
-    if cap_rate < 0.05 and piezo_rate > 0.20:
-        logger.warning(
-            f'Cap presence nearly absent for {side} '
-            f'(cap={cap_rate:.1%}, piezo={piezo_rate:.1%}) — using piezo-only occupancy'
-        )
-        merged_df[f'final_{side}_occupied'] = (merged_df[piezo_col] * 2).astype(int)
-        occupancy_mode = 'piezo-only'
-    else:
+    # Presence intervals require final_occupied == 2 (legacy).
+    #
+    # Sensor roles (as used in free-sleep):
+    # - Piezo: high-rate vibration/pressure signal; presence = signal *range/energy*
+    #   over a short window (heartbeat, breathing, micro-motion) — not static weight.
+    # - Cap (out/cen/in): slower load vs an *empty-bed baseline* (mean/std).
+    #
+    # Original AND (both must fire) reduces false positives when both are healthy.
+    # When one channel is nearly dead for the whole night while the other is strong,
+    # that is almost always miscalibration/drift — not "nobody was there".
+    # In that case use the strong channel and flag the weak one for recalibration.
+    ACTIVE = 0.05   # sensor is "saying something" across the window
+    STRONG = 0.20   # sensor is strongly asserting occupancy
+
+    recalibrate_hint = ''
+    if piezo_rate >= ACTIVE and cap_rate >= ACTIVE:
+        # Both sensors healthy enough → dual confirmation (original intent)
         merged_df[f'final_{side}_occupied'] = (
             merged_df[piezo_col] + merged_df[cap_col]
         ).astype(int)
         occupancy_mode = 'piezo+cap'
+    elif piezo_rate >= STRONG and cap_rate < ACTIVE:
+        merged_df[f'final_{side}_occupied'] = (merged_df[piezo_col] * 2).astype(int)
+        occupancy_mode = 'piezo-only'
+        recalibrate_hint = (
+            f'Recalibrate {side} side cap sensors (empty bed required) — '
+            f'cap barely fired ({cap_rate:.1%}) while piezo saw occupancy ({piezo_rate:.1%}).'
+        )
+        logger.warning(recalibrate_hint)
+    elif cap_rate >= STRONG and piezo_rate < ACTIVE:
+        merged_df[f'final_{side}_occupied'] = (merged_df[cap_col] * 2).astype(int)
+        occupancy_mode = 'cap-only'
+        recalibrate_hint = (
+            f'Piezo nearly silent on {side} ({piezo_rate:.1%}) while cap saw occupancy '
+            f'({cap_rate:.1%}). Check biometrics stream / RAW capture for that night.'
+        )
+        logger.warning(recalibrate_hint)
+    elif piezo_rate < ACTIVE and cap_rate < ACTIVE:
+        merged_df[f'final_{side}_occupied'] = 0
+        occupancy_mode = 'empty'
+    else:
+        # One weakly active — prefer OR so we don't drop ambiguous nights
+        merged_df[f'final_{side}_occupied'] = (
+            ((merged_df[piezo_col] == 1) | (merged_df[cap_col] == 1)).astype(int) * 2
+        )
+        occupancy_mode = 'either-weak'
 
     occupied_final = int((merged_df[f'final_{side}_occupied'] == 2).sum())
     logger.info(
         f'Presence summary {side}: mode={occupancy_mode} rows={total_rows:,} '
         f'final_occupied={occupied_final:,} both={both_count:,} '
-        f'piezo={piezo_count:,} cap={cap_count:,}'
+        f'piezo={piezo_count:,} ({piezo_rate:.1%}) cap={cap_count:,} ({cap_rate:.1%})'
     )
 
     sleep_records = build_sleep_records(merged_df, side, max_gap_in_minutes=15)
@@ -284,7 +314,12 @@ def detect_sleep(side: Side, start_time: datetime, end_time: datetime, folder_pa
         )
     else:
         insert_sleep_records(sleep_records)
-    # Cleanup
+
+    # Stash diagnostics for analyze_sleep finish message / GUI
+    merged_df.attrs['occupancy_mode'] = occupancy_mode
+    merged_df.attrs['recalibrate_hint'] = recalibrate_hint
+    merged_df.attrs['piezo_rate'] = piezo_rate
+    merged_df.attrs['cap_rate'] = cap_rate
     return merged_df, len(sleep_records)
 
 

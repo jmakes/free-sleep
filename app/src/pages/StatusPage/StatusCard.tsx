@@ -21,6 +21,12 @@ type StatusCardProps = {
   statusInfo: StatusInfo;
   job: ServerStatusKey,
 }
+const isCalibrationJob = (job: ServerStatusKey) =>
+  job === 'biometricsCalibrationLeft' || job === 'biometricsCalibrationRight';
+
+const isAnalyzeJob = (job: ServerStatusKey) =>
+  job === 'analyzeSleepLeft' || job === 'analyzeSleepRight';
+
 export default function StatusCard({ job, statusInfo }: StatusCardProps) {
   const timestamp = statusInfo.timestamp && moment(statusInfo.timestamp).format('YYYY-MM-DD HH:mm:ss z');
   let isRunnable = false;
@@ -30,6 +36,15 @@ export default function StatusCard({ job, statusInfo }: StatusCardProps) {
   }
   const [disabled, setDisabled] = useState(false);
   const startJob = () => {
+    if (isCalibrationJob(job)) {
+      const side = job === 'biometricsCalibrationLeft' ? 'left' : 'right';
+      const ok = window.confirm(
+        `Recalibrate ${side} side sensors for an UNOCCUPIED bed.\n\n` +
+        `Make sure nobody is lying on the ${side} side before you continue.\n\n` +
+        'The job looks for empty-bed signal in recent sensor data and saves a new baseline.'
+      );
+      if (!ok) return;
+    }
     setDisabled(true);
     postJobs([job] as Jobs)
       .catch(error => {
@@ -37,6 +52,13 @@ export default function StatusCard({ job, statusInfo }: StatusCardProps) {
       });
     setTimeout(() => setDisabled(false), 30_000);
   };
+
+  const messageLooksLikeError =
+    statusInfo.status === 'failed' ||
+    (statusInfo.message || '').toLowerCase().includes('error') ||
+    (statusInfo.message || '').toLowerCase().includes('failed');
+  const messageLooksLikeRecalibrate =
+    (statusInfo.message || '').toLowerCase().includes('recalibrat');
 
   return (
     <Grid item xs={ 12 } sm={ 6 } md={ 4 }>
@@ -90,14 +112,27 @@ export default function StatusCard({ job, statusInfo }: StatusCardProps) {
             statusInfo.message && (
               <Typography
                 variant="body2"
-                color="error"
+                color={ messageLooksLikeError ? 'error' : messageLooksLikeRecalibrate ? 'warning.main' : 'text.secondary' }
                 sx={ {
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   minHeight: 24,
+                  mt: 0.5,
                 } }
               >
-                Error: { statusInfo.message }
+                { messageLooksLikeError ? `Error: ${statusInfo.message}` : statusInfo.message }
+              </Typography>
+            )
+          }
+          {
+            isCalibrationJob(job) && (
+              <Typography
+                variant="caption"
+                color="warning.main"
+                display="block"
+                sx={ { mt: 1 } }
+              >
+                Empty bed only: no one on this side while calibrating.
               </Typography>
             )
           }
@@ -113,8 +148,14 @@ export default function StatusCard({ job, statusInfo }: StatusCardProps) {
                   width: '100%',
                 } }
               >
-                <Button onClick={ startJob } variant="contained" size="small" disabled={ disabled || statusInfo.status === 'started' }>
-                  Run
+                <Button
+                  onClick={ startJob }
+                  variant="contained"
+                  size="small"
+                  color={ isCalibrationJob(job) ? 'warning' : 'primary' }
+                  disabled={ disabled || statusInfo.status === 'started' }
+                >
+                  { isCalibrationJob(job) ? 'Calibrate' : isAnalyzeJob(job) ? 'Analyze' : 'Run' }
                   <PlayArrowIcon/>
                 </Button>
               </Box>

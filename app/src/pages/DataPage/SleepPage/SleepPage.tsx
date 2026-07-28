@@ -22,7 +22,10 @@ import { useMovementRecords } from '@api/movement.ts';
 import MovementChart from '@components/MovementChart.tsx';
 import ErrorBoundary from '@components/ErrorBoundary.tsx';
 import { useSettings } from '@api/settings.ts';
+import { useServices } from '@api/services.ts';
 import SideControl from '@components/SideControl.tsx';
+import { Button } from '@mui/material';
+import { postJobs, Jobs } from '@api/jobs.ts';
 
 
 const NoData = () => {
@@ -39,10 +42,23 @@ export default function SleepPage() {
   const { width = 300, ref } = useResizeDetector();
   const { side } = useAppStore();
   const { data: settings } = useSettings();
+  const { data: services } = useServices();
   const sideName = settings?.[side]?.name?.trim() || (side === 'left' ? 'Left' : 'Right');
   const [startTime, setStartTime] = useState(moment().subtract(7, 'days'));
   const [endTime, setEndTime] = useState(moment().add(2, 'day'));
   const [selectedSleepRecord, setSelectedSleepRecord] = useState<SleepRecord | undefined>(undefined);
+  const [dismissRecalibrate, setDismissRecalibrate] = useState(false);
+
+  const analyzeJob = side === 'left'
+    ? services?.biometrics?.jobs?.analyzeSleepLeft
+    : services?.biometrics?.jobs?.analyzeSleepRight;
+  const calibrateJobKey = side === 'left' ? 'biometricsCalibrationLeft' : 'biometricsCalibrationRight';
+  const recalibrateHint =
+    !dismissRecalibrate &&
+    analyzeJob?.message &&
+    /recalibrat/i.test(analyzeJob.message)
+      ? analyzeJob.message
+      : null;
 
   // Fetch sleep records for the selected week
   const { data: sleepRecords, refetch } = useSleepRecords({
@@ -101,6 +117,33 @@ export default function SleepPage() {
         <Typography variant="body2" color="text.secondary" sx={ { textAlign: 'center' } }>
           Showing sleep for { sideName } ({ side })
         </Typography>
+        {
+          recalibrateHint && (
+            <Alert
+              severity="warning"
+              onClose={ () => setDismissRecalibrate(true) }
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={ () => {
+                    const ok = window.confirm(
+                      `Recalibrate ${side} side sensors for an UNOCCUPIED bed.\n\n` +
+                      `Make sure nobody is on the ${side} side, then continue.`
+                    );
+                    if (!ok) return;
+                    postJobs([calibrateJobKey] as Jobs).catch(console.error);
+                  } }
+                >
+                  Calibrate
+                </Button>
+              }
+              sx={ { width: '100%', maxWidth: 520 } }
+            >
+              { recalibrateHint }
+            </Alert>
+          )
+        }
         <Box
           sx={ {
             display: 'flex',
