@@ -4,11 +4,11 @@ import {
   Box,
   Button,
   Chip,
+  LinearProgress,
   Paper,
   Stack,
   Typography,
 } from '@mui/material';
-// Stack used for cap zones + controls
 import SensorsIcon from '@mui/icons-material/Sensors';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
@@ -19,55 +19,151 @@ import Header from '../Header.tsx';
 import SideControl from '@components/SideControl.tsx';
 import { useAppStore } from '@state/appStore.tsx';
 import { useSettings } from '@api/settings.ts';
-import { fetchSensorLive, SideSensorSnapshot } from '@api/sensors.ts';
+import {
+  CapZoneEval,
+  fetchSensorLive,
+  SideSensorSnapshot,
+} from '@api/sensors.ts';
 
 const POLL_MS = 1_500;
 
-function heatColor(value: number, baseline: number, span: number): string {
-  // Map deviation from a soft baseline into blue → green → amber → red
-  const t = Math.max(0, Math.min(1, (value - baseline) / Math.max(span, 1)));
-  if (t < 0.33) return `rgba(33, 150, 243, ${0.25 + t})`;
-  if (t < 0.66) return `rgba(76, 175, 80, ${0.35 + t * 0.4})`;
-  return `rgba(244, 67, 54, ${0.35 + t * 0.5})`;
+function verdictChip(verdict: SideSensorSnapshot['liveVerdict']) {
+  switch (verdict) {
+    case 'likely_occupied':
+      return { label: 'Likely occupied (cap + piezo above)', color: 'success' as const };
+    case 'likely_empty':
+      return { label: 'Likely empty (both below)', color: 'default' as const };
+    case 'piezo_only':
+      return { label: 'Piezo only above threshold', color: 'warning' as const };
+    case 'cap_only':
+      return { label: 'Cap only above threshold', color: 'warning' as const };
+    default:
+      return { label: 'Verdict unknown', color: 'default' as const };
+  }
 }
 
-function piezoIntensity(range: number | undefined): number {
-  if (range === undefined) return 0;
-  // Typical presence range thresholds in analysis are ~10k–20k
-  return Math.max(0, Math.min(1, range / 40_000));
+function zoneColor(evalZone?: CapZoneEval, aboveCombined?: boolean): string {
+  if (!evalZone) return 'rgba(0,0,0,0.2)';
+  // Green-ish when near empty mean; warm when elevated vs empty band
+  if (evalZone.aboveEmptyBand || (aboveCombined && evalZone.zScore > 0.5)) {
+    const t = Math.min(1, Math.max(0, evalZone.zScore / 5));
+    return `rgba(244, 67, 54, ${0.25 + t * 0.5})`;
+  }
+  return 'rgba(76, 175, 80, 0.35)';
 }
 
 function CapZone({
   label,
-  value,
-  color,
+  evalZone,
+  combinedAbove,
 }: {
   label: string;
-  value?: number;
-  color: string;
+  evalZone?: CapZoneEval;
+  combinedAbove?: boolean;
 }) {
   return (
     <Box
       sx={ {
         flex: 1,
-        minHeight: 88,
+        minHeight: 110,
         borderRadius: 2,
         border: '1px solid',
-        borderColor: 'divider',
-        bgcolor: color,
+        borderColor: evalZone?.aboveEmptyBand ? 'warning.main' : 'divider',
+        bgcolor: zoneColor(evalZone, combinedAbove),
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        px: 1,
+        px: 0.5,
+        py: 1,
       } }
     >
       <Typography variant="caption" color="text.secondary">
         { label }
       </Typography>
-      <Typography variant="h6" fontWeight={ 700 }>
-        { value !== undefined ? value : '—' }
+      <Typography variant="h6" fontWeight={ 700 } lineHeight={ 1.1 }>
+        { evalZone ? Math.round(evalZone.value) : '—' }
       </Typography>
+      { evalZone && (
+        <>
+          <Typography variant="caption" sx={ { fontSize: '0.65rem', opacity: 0.9 } }>
+            empty { Math.round(evalZone.emptyLow) }–{ Math.round(evalZone.emptyHigh) }
+          </Typography>
+          <Typography variant="caption" sx={ { fontSize: '0.65rem' } }>
+            z={ evalZone.zScore.toFixed(2) }
+          </Typography>
+        </>
+      ) }
+    </Box>
+  );
+}
+
+function ThresholdBar({
+  label,
+  value,
+  threshold,
+  format = (n: number) => n.toFixed(1),
+  goodWhenBelow,
+}: {
+  label: string;
+  value?: number;
+  threshold: number;
+  format?: (n: number) => string;
+  /** true = empty bed should be below threshold */
+  goodWhenBelow: boolean;
+}) {
+  if (value === undefined) {
+    return (
+      <Box sx={ { mb: 1.5 } }>
+        <Typography variant="caption" color="text.secondary">{ label }: —</Typography>
+      </Box>
+    );
+  }
+  // Scale bar so threshold sits ~40% across for readability
+  const max = Math.max(threshold * 2.5, value * 1.1, 1);
+  const valuePct = Math.min(100, (value / max) * 100);
+  const threshPct = Math.min(100, (threshold / max) * 100);
+  const above = value >= threshold;
+  const looksEmpty = goodWhenBelow ? !above : above;
+
+  return (
+    <Box sx={ { mb: 1.5 } }>
+      <Box sx={ { display: 'flex', justifyContent: 'space-between', mb: 0.5 } }>
+        <Typography variant="caption">{ label }</Typography>
+        <Typography
+          variant="caption"
+          fontWeight={ 700 }
+          color={ looksEmpty ? 'success.main' : 'warning.main' }
+        >
+          { format(value) } { above ? '≥' : '<' } { format(threshold) }{' '}
+          { above ? '(above)' : '(below)' }
+        </Typography>
+      </Box>
+      <Box sx={ { position: 'relative', height: 10, borderRadius: 1, bgcolor: 'grey.800' } }>
+        <LinearProgress
+          variant="determinate"
+          value={ valuePct }
+          sx={ {
+            height: 10,
+            borderRadius: 1,
+            bgcolor: 'transparent',
+            '& .MuiLinearProgress-bar': {
+              bgcolor: above ? 'warning.main' : 'success.main',
+            },
+          } }
+        />
+        <Box
+          sx={ {
+            position: 'absolute',
+            left: `${threshPct}%`,
+            top: -2,
+            bottom: -2,
+            width: 2,
+            bgcolor: 'error.light',
+          } }
+          title={ `threshold ${format(threshold)}` }
+        />
+      </Box>
     </Box>
   );
 }
@@ -82,29 +178,21 @@ function BedSideViz({
   sideName: string;
 }) {
   const theme = useTheme();
-  const cap = snapshot?.cap;
-  // Soft baselines for color only (empty-ish cap values vary by pod)
-  const baseline = 400;
-  const span = 800;
-
-  // Physical layout (top of screen = head of bed):
-  // Cap zones out/cen/in: outer edge → center of side → toward mattress midline.
-  // Left side: out is screen-left; right side: out is screen-right.
-  const zones =
+  const capEval = snapshot?.calibration?.capEvaluation;
+  const zonesKeys =
     side === 'left'
-      ? [
-        { key: 'out', label: 'Outer', value: cap?.out },
-        { key: 'cen', label: 'Center', value: cap?.cen },
-        { key: 'in', label: 'Inner', value: cap?.in },
-      ]
-      : [
-        { key: 'in', label: 'Inner', value: cap?.in },
-        { key: 'cen', label: 'Center', value: cap?.cen },
-        { key: 'out', label: 'Outer', value: cap?.out },
-      ];
+      ? (['out', 'cen', 'in'] as const)
+      : (['in', 'cen', 'out'] as const);
+  const labels = { out: 'Outer', cen: 'Center', in: 'Inner' };
 
   const piezoRange = snapshot?.piezo1?.range;
-  const piezoGlow = piezoIntensity(piezoRange);
+  const piezoThreshold =
+    snapshot?.piezo1?.rangeThreshold ??
+    snapshot?.thresholds?.piezo.rangeThreshold ??
+    20_000;
+  const piezoAbove = snapshot?.piezo1?.aboveThreshold
+    ?? (piezoRange !== undefined && piezoRange >= piezoThreshold);
+  const piezoGlow = Math.max(0, Math.min(1, (piezoRange ?? 0) / (piezoThreshold * 2)));
 
   return (
     <Paper
@@ -112,17 +200,17 @@ function BedSideViz({
       sx={ {
         p: 2,
         width: '100%',
-        maxWidth: 420,
+        maxWidth: 440,
         borderRadius: 3,
         bgcolor: theme.palette.background.paper,
       } }
     >
       <Typography variant="subtitle1" fontWeight={ 700 } gutterBottom>
-        { sideName } side · bed map
+        { sideName } side · bed map + thresholds
       </Typography>
-      <Typography variant="caption" color="text.secondary" display="block" sx={ { mb: 1.5 } }>
-        Head of bed ↑ · Cap zones (out / cen / in) · Piezo strip at chest level
-        (Eight Sleep places the piezo band across the torso)
+      <Typography variant="caption" color="text.secondary" display="block" sx={ { mb: 1 } }>
+        Cap: value vs empty-band (mean±2σ). Piezo: packet range vs presence threshold.
+        Off bed → both below; on bed → both above (ideal).
       </Typography>
 
       <Box
@@ -141,36 +229,30 @@ function BedSideViz({
           HEAD
         </Typography>
 
-        { /* Capacitance zones */ }
         <Stack direction="row" spacing={ 1 } sx={ { mb: 1.5 } }>
-          { zones.map((zone) => (
+          { zonesKeys.map((key) => (
             <CapZone
-              key={ zone.key }
-              label={ zone.label }
-              value={ zone.value }
-              color={
-                zone.value !== undefined
-                  ? heatColor(zone.value, baseline, span)
-                  : theme.palette.grey[900]
-              }
+              key={ key }
+              label={ labels[key] }
+              evalZone={ capEval?.zones[key] }
+              combinedAbove={ capEval?.aboveThreshold }
             />
           )) }
         </Stack>
 
-        { /* Piezo strip */ }
         <Box
           sx={ {
-            height: 56,
+            height: 64,
             borderRadius: 1,
-            border: '1px dashed',
-            borderColor: 'primary.main',
-            mb: 1.5,
+            border: '1px solid',
+            borderColor: piezoAbove ? 'warning.main' : 'success.main',
+            mb: 1,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexDirection: 'column',
-            background: `rgba(83, 147, 255, ${0.15 + piezoGlow * 0.55})`,
-            boxShadow: piezoGlow > 0.3
+            background: `rgba(83, 147, 255, ${0.12 + piezoGlow * 0.55})`,
+            boxShadow: piezoGlow > 0.25
               ? `0 0 ${12 + piezoGlow * 20}px rgba(83, 147, 255, ${piezoGlow})`
               : 'none',
             transition: 'background 0.3s, box-shadow 0.3s',
@@ -181,7 +263,7 @@ function BedSideViz({
           </Typography>
           <Typography variant="body2" fontWeight={ 600 }>
             { piezoRange !== undefined
-              ? `range ${piezoRange.toLocaleString()} · avg ${snapshot?.piezo1?.avg.toLocaleString()}`
+              ? `range ${piezoRange.toLocaleString()} ${piezoAbove ? '≥' : '<'} ${piezoThreshold.toLocaleString()}`
               : 'no piezo sample' }
           </Typography>
         </Box>
@@ -198,7 +280,17 @@ function BedSideViz({
   );
 }
 
-function ValueRow({ label, value }: { label: string; value: string }) {
+function ValueRow({
+  label,
+  value,
+  emphasis,
+}: {
+  label: string;
+  value: string;
+  emphasis?: 'ok' | 'warn' | 'none';
+}) {
+  const color =
+    emphasis === 'ok' ? 'success.main' : emphasis === 'warn' ? 'warning.main' : undefined;
   return (
     <Box
       sx={ {
@@ -213,7 +305,12 @@ function ValueRow({ label, value }: { label: string; value: string }) {
       <Typography variant="body2" color="text.secondary">
         { label }
       </Typography>
-      <Typography variant="body2" fontFamily="monospace" fontWeight={ 600 }>
+      <Typography
+        variant="body2"
+        fontFamily="monospace"
+        fontWeight={ 600 }
+        color={ color }
+      >
         { value }
       </Typography>
     </Box>
@@ -266,20 +363,25 @@ export default function SensorsPage() {
     }, POLL_MS);
   }, [pollOnce]);
 
-  // Stop when leaving the page
   useEffect(() => () => stop(), [stop]);
 
-  // If side changes while running, keep streaming the new side
   useEffect(() => {
     if (running) void pollOnce();
   }, [side, running, pollOnce]);
+
+  const capEval = snapshot?.calibration?.capEvaluation;
+  const piezoThreshold =
+    snapshot?.piezo1?.rangeThreshold ??
+    snapshot?.thresholds?.piezo.rangeThreshold ??
+    20_000;
+  const verdict = snapshot?.liveVerdict ? verdictChip(snapshot.liveVerdict) : null;
 
   return (
     <PageContainer sx={ { mb: 15, gap: 1.5, mt: 0, alignItems: 'center' } }>
       <Header title="Sensors" icon={ <SensorsIcon /> } />
       <SideControl />
 
-      <Stack direction="row" spacing={ 1 } alignItems="center" sx={ { width: '100%', maxWidth: 420 } }>
+      <Stack direction="row" spacing={ 1 } alignItems="center" sx={ { width: '100%', maxWidth: 440 } }>
         <Button
           variant="contained"
           color={ running ? 'warning' : 'primary' }
@@ -292,32 +394,84 @@ export default function SensorsPage() {
         { running && <Chip size="small" color="success" label="Live" /> }
       </Stack>
 
-      <Typography variant="caption" color="text.secondary" sx={ { maxWidth: 420, textAlign: 'center' } }>
-        Polls the latest Pod <code>.RAW</code> file while streaming. Does <strong>not</strong> require
-        the side to be powered on or someone in bed — empty-bed samples still produce cap/piezo
-        readings. RAW capture usually needs the Pod offline / cloud blocked, and biometrics enabled.
+      <Typography variant="caption" color="text.secondary" sx={ { maxWidth: 440, textAlign: 'center' } }>
+        Live RAW samples vs sleep-analysis thresholds. Off bed: cap combined z and piezo range
+        should stay <strong>below</strong> thresholds. On bed: ideally <strong>above</strong> both.
+        Power on / occupancy not required for empty-bed readings.
       </Typography>
 
       { pollError && (
-        <Alert severity="warning" sx={ { width: '100%', maxWidth: 420 } }>
+        <Alert severity="warning" sx={ { width: '100%', maxWidth: 440 } }>
           { pollError }
         </Alert>
       ) }
 
-      { running && snapshot && !pollError && !snapshot.cap && !snapshot.piezo1 && (
-        <Alert severity="info" sx={ { width: '100%', maxWidth: 420 } }>
-          Connected but no frames yet. Waiting for capSense / piezo-dual in the RAW tail…
+      { snapshot?.calibration?.missing && (
+        <Alert severity="warning" sx={ { width: '100%', maxWidth: 440 } }>
+          { snapshot.calibration.hint ||
+            'No cap baseline for this side. Run Status → Calibrate with an empty bed.' }
         </Alert>
+      ) }
+
+      { verdict && snapshot && !pollError && (
+        <Chip
+          label={ verdict.label }
+          color={ verdict.color }
+          variant={ verdict.color === 'default' ? 'outlined' : 'filled' }
+        />
       ) }
 
       <BedSideViz side={ side } snapshot={ snapshot } sideName={ sideName } />
 
-      <Paper
-        variant="outlined"
-        sx={ { p: 2, width: '100%', maxWidth: 420, borderRadius: 3 } }
-      >
+      { /* Threshold comparison */ }
+      <Paper variant="outlined" sx={ { p: 2, width: '100%', maxWidth: 440, borderRadius: 3 } }>
         <Typography variant="subtitle2" gutterBottom>
-          Numeric readout · { sideName }
+          Live vs thresholds · { sideName }
+        </Typography>
+        { !snapshot && (
+          <Typography variant="body2" color="text.secondary">
+            Start stream to compare live values with calibration.
+          </Typography>
+        ) }
+        { snapshot && (
+          <>
+            <ThresholdBar
+              label="Cap combined z-score"
+              value={ capEval?.combinedZ }
+              threshold={
+                capEval?.occupancyThreshold ??
+                snapshot.thresholds?.cap.occupancyThreshold ??
+                5
+              }
+              goodWhenBelow
+            />
+            <ThresholdBar
+              label="Piezo packet range"
+              value={ snapshot.piezo1?.range }
+              threshold={ piezoThreshold }
+              format={ (n) => Math.round(n).toLocaleString() }
+              goodWhenBelow
+            />
+            <Typography variant="caption" color="text.secondary" display="block">
+              { snapshot.thresholds?.cap.description }
+            </Typography>
+            <Typography variant="caption" color="text.secondary" display="block" sx={ { mt: 0.5 } }>
+              { snapshot.thresholds?.piezo.description }
+            </Typography>
+            { snapshot.calibration?.capBaseline?.mtime && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={ { mt: 1 } }>
+                Cap baseline file mtime:{' '}
+                { new Date(snapshot.calibration.capBaseline.mtime).toLocaleString() }
+              </Typography>
+            ) }
+          </>
+        ) }
+      </Paper>
+
+      { /* Numeric + baseline table */ }
+      <Paper variant="outlined" sx={ { p: 2, width: '100%', maxWidth: 440, borderRadius: 3 } }>
+        <Typography variant="subtitle2" gutterBottom>
+          Calibration detail · { sideName }
         </Typography>
         { !snapshot && !running && (
           <Typography variant="body2" color="text.secondary">
@@ -328,58 +482,78 @@ export default function SensorsPage() {
           <Box>
             <ValueRow label="Sample time" value={ lastOkAt || '—' } />
             <ValueRow label="Source file" value={ snapshot.sourceFile || '—' } />
-            <ValueRow label="File mtime" value={ snapshot.fileMtime
-              ? new Date(snapshot.fileMtime).toLocaleString()
-              : '—' }
-            />
             <Typography variant="caption" color="text.secondary" sx={ { mt: 1.5, display: 'block' } }>
-              Capacitance
+              Capacitance (value · empty mean±2σ · z)
             </Typography>
-            <ValueRow label="Outer (out)" value={ snapshot.cap ? String(snapshot.cap.out) : '—' } />
-            <ValueRow label="Center (cen)" value={ snapshot.cap ? String(snapshot.cap.cen) : '—' } />
-            <ValueRow label="Inner (in)" value={ snapshot.cap ? String(snapshot.cap.in) : '—' } />
-            <ValueRow label="Cap status" value={ snapshot.cap?.status || '—' } />
-            <ValueRow label="Cap ts" value={ snapshot.cap?.ts || '—' } />
+            { (['out', 'cen', 'in'] as const).map((zone) => {
+              const evalZone = capEval?.zones[zone];
+              const raw = snapshot.cap?.[zone];
+              if (!evalZone && raw === undefined) {
+                return <ValueRow key={ zone } label={ zone } value="—" />;
+              }
+              if (!evalZone) {
+                return <ValueRow key={ zone } label={ zone } value={ String(raw) } />;
+              }
+              return (
+                <ValueRow
+                  key={ zone }
+                  label={ `${zone}` }
+                  value={
+                    `${Math.round(evalZone.value)} · empty ${Math.round(evalZone.mean)}±${Math.round(2 * evalZone.std)} · z ${evalZone.zScore.toFixed(2)}`
+                  }
+                  emphasis={ evalZone.aboveEmptyBand ? 'warn' : 'ok' }
+                />
+              );
+            }) }
+            <ValueRow
+              label="Cap combined z"
+              value={
+                capEval
+                  ? `${capEval.combinedZ.toFixed(2)} (threshold ${capEval.occupancyThreshold})`
+                  : '—'
+              }
+              emphasis={
+                capEval
+                  ? (capEval.aboveThreshold ? 'warn' : 'ok')
+                  : 'none'
+              }
+            />
             <Typography variant="caption" color="text.secondary" sx={ { mt: 1.5, display: 'block' } }>
               Piezo channel 1
             </Typography>
             <ValueRow
-              label="Avg"
-              value={ snapshot.piezo1 ? snapshot.piezo1.avg.toLocaleString() : '—' }
-            />
-            <ValueRow
-              label="Min / Max"
+              label="Range"
               value={
                 snapshot.piezo1
-                  ? `${snapshot.piezo1.min.toLocaleString()} / ${snapshot.piezo1.max.toLocaleString()}`
+                  ? `${snapshot.piezo1.range.toLocaleString()} (threshold ${piezoThreshold.toLocaleString()})`
                   : '—'
+              }
+              emphasis={
+                snapshot.piezo1
+                  ? (snapshot.piezo1.range >= piezoThreshold ? 'warn' : 'ok')
+                  : 'none'
               }
             />
             <ValueRow
-              label="Range"
-              value={ snapshot.piezo1 ? snapshot.piezo1.range.toLocaleString() : '—' }
+              label="Avg / min / max"
+              value={
+                snapshot.piezo1
+                  ? `${snapshot.piezo1.avg.toLocaleString()} / ${snapshot.piezo1.min.toLocaleString()} / ${snapshot.piezo1.max.toLocaleString()}`
+                  : '—'
+              }
             />
             <ValueRow
               label="Samples / packet"
               value={ snapshot.piezo1 ? String(snapshot.piezo1.sampleCount) : '—' }
             />
-            { snapshot.piezo2 && (
-              <>
-                <Typography variant="caption" color="text.secondary" sx={ { mt: 1.5, display: 'block' } }>
-                  Piezo channel 2
-                </Typography>
-                <ValueRow label="Avg" value={ snapshot.piezo2.avg.toLocaleString() } />
-                <ValueRow label="Range" value={ snapshot.piezo2.range.toLocaleString() } />
-              </>
-            ) }
           </Box>
         ) }
       </Paper>
 
-      <Typography variant="caption" color="text.secondary" sx={ { maxWidth: 420 } }>
-        Layout note: exact Pod 4 fabric placement is not fully public. Cap labels follow free-sleep&apos;s
-        out/cen/in naming (outer edge → midline). Piezo is shown as a chest-level band per Eight Sleep&apos;s
-        published sensor strip location.
+      <Typography variant="caption" color="text.secondary" sx={ { maxWidth: 440 } }>
+        Green ≈ below presence threshold (expect when off bed). Amber/red ≈ above threshold
+        (expect when on bed). Single samples are approximate; sleep analysis also uses a short
+        rolling window. Cap baseline comes from empty-bed calibration.
       </Typography>
     </PageContainer>
   );

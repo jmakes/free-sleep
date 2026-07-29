@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Dump the latest capSense + piezo-dual sample for one side from the newest .RAW file.
-
-Used by the free-sleep Sensors UI (via Node). Fast path: only reads the file tail.
+Dump the latest capSense + piezo-dual sample for one side from the newest .RAW file,
+plus empty-bed calibration baselines and presence thresholds used by sleep analysis.
 
 Usage:
   /home/dac/venv/bin/python -B dump_sensor_snapshot.py --side=right
@@ -25,6 +24,19 @@ RAW_DIRS = [
     os.environ.get('RAW_DATA_FOLDER') or '',
 ]
 
+# Same parameters as sleep_detection/sleep_detector.py → detect_presence_*
+CAP_OCCUPANCY_THRESHOLD = 5.0   # sum of per-zone z-scores
+CAP_ROLLING_SECONDS = 10
+CAP_THRESHOLD_PERCENT = 0.90
+PIEZO_RANGE_THRESHOLD = 20_000  # packet range (max-min) for presence
+PIEZO_ROLLING_SECONDS = 10
+PIEZO_THRESHOLD_PERCENT = 0.70
+
+DATA_FOLDERS = [
+    '/persistent/free-sleep-data/',
+    os.environ.get('DATA_FOLDER') or '',
+]
+
 
 def find_latest_raw() -> Path | None:
     candidates: list[Path] = []
@@ -39,6 +51,85 @@ def find_latest_raw() -> Path | None:
     if not candidates:
         return None
     return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def baseline_path(side: str) -> Path | None:
+    name = f'{side}_cap_baseline.json'
+    for folder in DATA_FOLDERS:
+        if not folder:
+            continue
+        path = Path(folder) / name
+        if path.is_file():
+            return path
+    # Common free-sleep layout
+    for path in (
+        Path('/persistent/free-sleep-data') / name,
+        Path('/home/dac/free-sleep/server/free-sleep-data') / name,
+    ):
+        if path.is_file():
+            return path
+    return None
+
+
+def load_cap_baseline(side: str) -> dict | None:
+    path = baseline_path(side)
+    if not path:
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as handle:
+            data = json.load(handle)
+        # Normalize keys: stored as right_out / left_cen etc.
+        zones = {}
+        for zone in ('out', 'cen', 'in'):
+            key = f'{side}_{zone}'
+            if key in data and isinstance(data[key], dict):
+                zones[zone] = {
+                    'mean': float(data[key].get('mean', 0)),
+                    'std': float(data[key].get('std', 1)) or 1.0,
+                }
+        if len(zones) != 3:
+            return None
+        return {
+            'path': str(path),
+            'zones': zones,
+            'mtime': datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+        }
+    except Exception:
+        return None
+
+
+def compute_cap_vs_baseline(cap: dict, baseline: dict) -> dict:
+    """Per-zone z-score and combined score used by detect_presence_cap (single sample)."""
+    zones_out = {}
+    combined = 0.0
+    for zone in ('out', 'cen', 'in'):
+        mean = baseline['zones'][zone]['mean']
+        std = baseline['zones'][zone]['std'] or 1.0
+        value = float(cap[zone])
+        z = (value - mean) / std
+        combined += z
+        # Rough empty band for UI: mean ± 2*std
+        zones_out[zone] = {
+            'value': value,
+            'mean': mean,
+            'std': std,
+            'zScore': round(z, 3),
+            'emptyLow': round(mean - 2 * std, 1),
+            'emptyHigh': round(mean + 2 * std, 1),
+            # Above empty band is a weak "something changed" hint (not the real detector)
+            'aboveEmptyBand': value > mean + 2 * std,
+        }
+    return {
+        'zones': zones_out,
+        'combinedZ': round(combined, 3),
+        'occupancyThreshold': CAP_OCCUPANCY_THRESHOLD,
+        'aboveThreshold': combined > CAP_OCCUPANCY_THRESHOLD,
+        'note': (
+            f'Single-sample combined z-score vs threshold {CAP_OCCUPANCY_THRESHOLD}. '
+            f'Full sleep detection also requires ≥{int(CAP_THRESHOLD_PERCENT * 100)}% of '
+            f'{CAP_ROLLING_SECONDS}s window above threshold.'
+        ),
+    }
 
 
 def piezo_stats(raw_bytes: bytes) -> dict | None:
@@ -83,10 +174,8 @@ def read_tail_records(path: Path, tail_bytes: int = 256 * 1024) -> list[dict]:
         handle.seek(start)
         data = handle.read()
 
-    # Walk the buffer until we can decode a CBOR object, then keep going
     records: list[dict] = []
     bio = io.BytesIO(data)
-    # Skip broken prefix (mid-object)
     while bio.tell() < len(data):
         pos = bio.tell()
         try:
@@ -115,17 +204,52 @@ def main() -> int:
     side = args.side
     other = 'left' if side == 'right' else 'right'
 
+    thresholds = {
+        'cap': {
+            'occupancyThreshold': CAP_OCCUPANCY_THRESHOLD,
+            'rollingSeconds': CAP_ROLLING_SECONDS,
+            'thresholdPercent': CAP_THRESHOLD_PERCENT,
+            'description': (
+                'Cap: sum of z-scores for out/cen/in vs empty-bed baseline. '
+                f'Instant sample above {CAP_OCCUPANCY_THRESHOLD} counts toward occupancy; '
+                f'analysis needs ≥{int(CAP_THRESHOLD_PERCENT * 100)}% of a '
+                f'{CAP_ROLLING_SECONDS}s window.'
+            ),
+        },
+        'piezo': {
+            'rangeThreshold': PIEZO_RANGE_THRESHOLD,
+            'rollingSeconds': PIEZO_ROLLING_SECONDS,
+            'thresholdPercent': PIEZO_THRESHOLD_PERCENT,
+            'description': (
+                f'Piezo: packet range (max−min) ≥ {PIEZO_RANGE_THRESHOLD:,} counts as active; '
+                f'analysis needs ≥{int(PIEZO_THRESHOLD_PERCENT * 100)}% of a '
+                f'{PIEZO_ROLLING_SECONDS}s window.'
+            ),
+        },
+    }
+
+    baseline = load_cap_baseline(side)
+
     path = find_latest_raw()
     now = datetime.now(timezone.utc).isoformat()
     if path is None:
         json.dump({
             'side': side,
             'timestamp': now,
+            'thresholds': thresholds,
+            'calibration': {
+                'capBaseline': baseline,
+                'missing': baseline is None,
+                'hint': (
+                    None if baseline else
+                    f'No {side}_cap_baseline.json — run Status → Calibrate {side} '
+                    f'(empty bed required).'
+                ),
+            },
             'error': (
                 'No .RAW files under /persistent. Sensor capture is written by the Pod '
                 'firmware (usually when cloud/internet is blocked). Bed power ON is not '
-                'required; being in bed is not required for empty-bed samples. '
-                'Check: free-sleep-stream running, biometrics enabled, WAN blocked if needed.'
+                'required; being in bed is not required for empty-bed samples.'
             ),
         }, sys.stdout)
         return 0
@@ -137,6 +261,8 @@ def main() -> int:
             'side': side,
             'timestamp': now,
             'sourceFile': path.name,
+            'thresholds': thresholds,
+            'calibration': {'capBaseline': baseline, 'missing': baseline is None},
             'error': f'Failed reading RAW: {error}',
         }, sys.stdout)
         return 0
@@ -161,36 +287,66 @@ def main() -> int:
         elif rtype == 'piezo-dual':
             for channel, key in (('1', f'{side}1'), ('2', f'{side}2')):
                 raw = row.get(key)
-                if raw is None:
+                if raw is None or not isinstance(raw, (bytes, bytearray)):
                     continue
-                if isinstance(raw, (bytes, bytearray)):
-                    stats = piezo_stats(bytes(raw))
-                else:
-                    continue
+                stats = piezo_stats(bytes(raw))
                 if not stats:
                     continue
                 stats['ts'] = ts
                 stats['channel'] = channel
+                stats['rangeThreshold'] = PIEZO_RANGE_THRESHOLD
+                stats['aboveThreshold'] = stats['range'] >= PIEZO_RANGE_THRESHOLD
                 if channel == '1':
                     latest_piezo1 = stats
                 else:
                     latest_piezo2 = stats
 
     mtime = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+
+    cap_eval = None
+    if latest_cap and baseline:
+        cap_eval = compute_cap_vs_baseline(latest_cap, baseline)
+
     if not latest_cap and not latest_piezo1 and not latest_piezo2:
         json.dump({
             'side': side,
             'timestamp': now,
             'sourceFile': path.name,
             'fileMtime': mtime,
+            'thresholds': thresholds,
+            'calibration': {
+                'capBaseline': baseline,
+                'missing': baseline is None,
+                'hint': (
+                    None if baseline else
+                    f'No {side}_cap_baseline.json — run Status → Calibrate {side} (empty bed).'
+                ),
+            },
             'error': (
                 f'Found {path.name} but no capSense/piezo-dual frames in the last ~256KB. '
-                f'File may be stale or a different format. Age check: mtime={mtime}. '
-                f'Records decoded from tail: {len(records)}.'
+                f'Records decoded: {len(records)}.'
             ),
             'recordsInTail': len(records),
         }, sys.stdout)
         return 0
+
+    # Simple live verdict for UI chips
+    live_verdict = 'unknown'
+    if cap_eval is not None and latest_piezo1 is not None:
+        cap_on = cap_eval['aboveThreshold']
+        piezo_on = latest_piezo1.get('aboveThreshold', False)
+        if cap_on and piezo_on:
+            live_verdict = 'likely_occupied'
+        elif not cap_on and not piezo_on:
+            live_verdict = 'likely_empty'
+        elif piezo_on and not cap_on:
+            live_verdict = 'piezo_only'
+        elif cap_on and not piezo_on:
+            live_verdict = 'cap_only'
+    elif latest_piezo1 is not None:
+        live_verdict = 'piezo_only' if latest_piezo1.get('aboveThreshold') else 'likely_empty'
+    elif cap_eval is not None:
+        live_verdict = 'cap_only' if cap_eval['aboveThreshold'] else 'likely_empty'
 
     json.dump({
         'side': side,
@@ -202,6 +358,17 @@ def main() -> int:
         'piezo2': latest_piezo2,
         'otherCap': latest_other,
         'recordsInTail': len(records),
+        'thresholds': thresholds,
+        'calibration': {
+            'capBaseline': baseline,
+            'missing': baseline is None,
+            'capEvaluation': cap_eval,
+            'hint': (
+                None if baseline else
+                f'No {side}_cap_baseline.json — run Status → Calibrate {side} with an empty bed.'
+            ),
+        },
+        'liveVerdict': live_verdict,
     }, sys.stdout)
     return 0
 
