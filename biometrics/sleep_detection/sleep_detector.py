@@ -30,6 +30,7 @@ try:
         DEFAULT_PIEZO_ROLLING_SECONDS,
         DEFAULT_PIEZO_THRESHOLD_PERCENT,
         MAX_PRESENCE_GAP_MINUTES,
+        MIN_EXIT_GAP_SECONDS,
         MIN_SLEEP_HOURS,
         get_cap_method,
         get_cap_zone_threshold,
@@ -44,6 +45,7 @@ except ImportError:
         DEFAULT_PIEZO_ROLLING_SECONDS,
         DEFAULT_PIEZO_THRESHOLD_PERCENT,
         MAX_PRESENCE_GAP_MINUTES,
+        MIN_EXIT_GAP_SECONDS,
         MIN_SLEEP_HOURS,
         get_cap_method,
         get_cap_zone_threshold,
@@ -111,17 +113,22 @@ def _identify_sleep_intervals(
     present_intervals: List[Tuple[datetime, datetime]],
     max_gap_in_minutes: int = MAX_PRESENCE_GAP_MINUTES,
     min_sleep_hours: float = MIN_SLEEP_HOURS,
+    min_exit_gap_seconds: int = MIN_EXIT_GAP_SECONDS,
 ):
     """
     Merge presence with gaps ≤ max_gap_in_minutes; keep only periods with
     total presence > min_sleep_hours (default 3h).
+
+    times_exited_bed counts only gaps ≥ min_exit_gap_seconds (default 45s).
+    Shorter dropouts (tosses, sensor flicker) still merge the night but are not exits.
     """
     logger.debug(
         f'Identifying sleep intervals... | max_gap_in_minutes: {max_gap_in_minutes} '
-        f'| min_sleep_hours: {min_sleep_hours}'
+        f'| min_sleep_hours: {min_sleep_hours} | min_exit_gap_seconds: {min_exit_gap_seconds}'
     )
     max_gap = timedelta(minutes=max_gap_in_minutes)
     min_sleep = timedelta(hours=min_sleep_hours)
+    min_exit_gap = timedelta(seconds=min_exit_gap_seconds)
     if not present_intervals:
         return []
 
@@ -137,7 +144,8 @@ def _identify_sleep_intervals(
         if gap <= max_gap:
             current_end = next_end
             total_sleep_time += (next_end - next_start)
-            exit_count += 1
+            if gap >= min_exit_gap:
+                exit_count += 1
         else:
             if total_sleep_time > min_sleep:
                 sleep_intervals.append({

@@ -40,6 +40,8 @@ DEFAULT_FUSION_MODE = 'piezo_primary'
 # Sleep period rules (unchanged intentional defaults).
 MIN_SLEEP_HOURS = 3
 MAX_PRESENCE_GAP_MINUTES = 15
+# Count as a bed exit only when presence is gone this long (tosses/flicker are shorter).
+MIN_EXIT_GAP_SECONDS = 45
 
 BASELINE_VERSION = 2
 

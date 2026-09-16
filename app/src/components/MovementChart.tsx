@@ -8,22 +8,20 @@ import type { MovementRecord } from '@api/movement.ts';
 
 type MovementChartProps = {
   movementRecords: MovementRecord[];
-  label: string;
+  label?: string;
   bucketMs?: number;
-  minActiveMs?: number;
 };
 
 type Pt = { x: Date; y: number };
 
-// -----------------------------------------------------
-// PHASE LEVELS (final enumerated form)
-// -----------------------------------------------------
-
-// Original movement thresholds mapped to enumerated values
-function snapToEnumLevel(v: number): number {
-  if (v >= 900) return 3; // Awake
-  if (v >= 200) return 2; // Light
-  return 1; // REM
+/**
+ * Restlessness levels from mattress movement — NOT sleep stages.
+ * Quiet / Stirring / Restless only. Real REM/Deep/Light needs HR+HRV+breathing.
+ */
+function snapToRestlessness(v: number): number {
+  if (v >= 900) return 3; // Restless
+  if (v >= 200) return 2; // Stirring
+  return 1; // Quiet
 }
 
 /** Max-pool inside fixed time buckets */
@@ -57,63 +55,38 @@ function bucketMaxByTime(items: { t: number; v: number }[], bucketMs: number) {
   return out;
 }
 
-/** Expand non-REM phases (>=2) to at least a 10 min block */
-function expandActiveWindows(
-  points: Pt[],
-  bucketMs: number,
-  minActiveMs: number,
-): Pt[] {
-  if (!points.length) return points;
+const LEVEL_LABEL: Record<number, string> = {
+  1: 'Quiet',
+  2: 'Stirring',
+  3: 'Restless',
+};
 
-  const radius = Math.ceil(minActiveMs / bucketMs / 2); // dilation radius
-  const ys = points.map(p => p.y);
-  const out = ys.slice();
-
-  for (let i = 0; i < ys.length; i++) {
-    if (ys[i] >= 2) {
-      const j0 = Math.max(0, i - radius);
-      const j1 = Math.min(ys.length - 1, i + radius);
-      for (let j = j0; j <= j1; j++) {
-        // expand to same enum level
-        out[j] = Math.max(out[j], ys[i]);
-      }
-    }
-  }
-
-  return points.map((p, index) => ({ x: p.x, y: out[index] }));
-}
-
-// --------------------------------------------------------
-
+/**
+ * Horizontal restlessness hypnogram: time left→right, level as horizontal steps.
+ * Brief tosses stay brief (no 10‑minute dilation that invented fake "awake" blocks).
+ */
 export default function MovementAreaChart({
   movementRecords,
-  label,
+  label = 'Restlessness',
   bucketMs = 60_000, // 1 min buckets
-  minActiveMs = 10 * 60_000, // expand active blocks to 10 minutes
 }: MovementChartProps) {
   const theme = useTheme();
-  const { width = 360, ref } = useResizeDetector();
+  const { ref } = useResizeDetector();
 
   const points = useMemo<Pt[]>(() => {
     if (!movementRecords?.length) return [];
 
-    // Sort & normalize input
     const raw = [...movementRecords]
       .map(r => ({ t: new Date(r.timestamp).getTime(), v: Number(r.total_movement) }))
       .sort((a, b) => a.t - b.t);
 
-    // Time-based max pooling
     const pooled = bucketMaxByTime(raw, bucketMs);
 
-    // Snap to enumerated levels (1, 2, 3)
-    const snapped = pooled.map(p => ({
+    return pooled.map(p => ({
       x: new Date(p.t),
-      y: snapToEnumLevel(p.v),
+      y: snapToRestlessness(p.v),
     }));
-
-    // Expand active blocks (>=2)
-    return expandActiveWindows(snapped, bucketMs, minActiveMs);
-  }, [movementRecords, bucketMs, minActiveMs, width]);
+  }, [movementRecords, bucketMs]);
 
   if (!points.length) return null;
 
@@ -121,12 +94,15 @@ export default function MovementAreaChart({
   const yData = points.map(p => p.y);
 
   return (
-    <Card sx={ { pt: 1, mt: 2, pl: 2 } }>
+    <Card sx={ { pt: 1, mt: 2, pl: 2, pr: 1 } }>
       <Typography variant="h6" gutterBottom>{ label }</Typography>
+      <Typography variant="caption" color="text.secondary" sx={ { display: 'block', mb: 1, pr: 1 } }>
+        Mattress movement only — not sleep stages (REM / Deep / Light). Quiet stretches can be deep or REM; restless can be a toss or a wake.
+      </Typography>
 
       <LineChart
         ref={ ref }
-        height={ 300 }
+        height={ 220 }
         xAxis={ [{
           scaleType: 'time',
           data: xData,
@@ -134,30 +110,30 @@ export default function MovementAreaChart({
           min: xData[0],
           max: xData[xData.length - 1],
           tickMinStep: 60 * 60 * 1000,
-          tickNumber: 4,
+          tickNumber: 5,
         }] }
         yAxis={ [{
-          min: 0,
-          max: 3,
+          min: 0.5,
+          max: 3.5,
           tickMinStep: 1,
-          valueFormatter: (y) => {
-            const m: Record<number, string> = { 1: 'REM', 2: 'Light', 3: 'Awake' };
-            return m[Number(y)] ?? ''; // hide any unexpected ticks
-          },
+          tickNumber: 3,
+          valueFormatter: (y) => LEVEL_LABEL[Number(y)] ?? '',
         }] }
         series={ [{
-          id: 'movement-phase',
+          id: 'restlessness',
           label,
           data: yData,
           area: true,
           showMark: false,
           curve: 'stepAfter',
         }] }
-        margin={ { left: 70, right: 30, top: 10, bottom: 40 } }
+        margin={ { left: 88, right: 24, top: 12, bottom: 36 } }
         slotProps={ { legend: { hidden: true } } }
         sx={ {
           [`& .${lineElementClasses.root}`]: { stroke: theme.palette.secondary.dark },
-          [`& .${areaElementClasses.root}`]: { fill: theme.palette.secondary.dark, opacity: 0.70, filter: 'none' },
+          [`& .${areaElementClasses.root}`]: { fill: theme.palette.secondary.dark, opacity: 0.55, filter: 'none' },
+          // Emphasize wide horizontal timeline
+          width: '100%',
         } }
       />
     </Card>

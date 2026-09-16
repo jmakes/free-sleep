@@ -191,7 +191,7 @@ export default function SleepPage() {
                   <VitalsLineChart vitalsRecords={ vitalsRecords } metric="heart_rate"/>
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Movement chart">
-                  <MovementChart movementRecords={ movementRecords || [] } label="Movement"/>
+                  <MovementChart movementRecords={ movementRecords || [] } label="Restlessness"/>
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Breathing rate chart">
                   <VitalsLineChart vitalsRecords={ vitalsRecords } metric="breathing_rate"/>

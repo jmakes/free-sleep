@@ -113,7 +113,7 @@ export default function VitalsLineChart({ vitalsRecords, metric }: VitalsLineCha
       </Typography>
       <LineChart
         ref={ ref }
-        height={ 300 }
+        height={ 220 }
         colors={ [color] }
         dataset={ cleanedVitalsRecords }
         xAxis={ [

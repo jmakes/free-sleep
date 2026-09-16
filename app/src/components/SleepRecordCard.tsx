@@ -161,7 +161,7 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
           {
             label: 'Times exited bed',
             icon: <TransferWithinAStationIcon fontSize="small" />,
-            value: `${sleepRecord.times_exited_bed} ${sleepRecord.times_exited_bed === 1 ? 'time' : 'times'}`,
+            value: `${sleepRecord.times_exited_bed} ${sleepRecord.times_exited_bed === 1 ? 'time' : 'times'} (≥45s away)`,
           },
         ].map(({ label, value, icon }) => (
           <Box key={ label } display="flex" justifyContent="space-between" alignItems="center">
