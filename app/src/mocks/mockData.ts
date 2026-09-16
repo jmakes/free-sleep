@@ -206,6 +206,9 @@ const createSettings = (): Settings => ({
       enabled: true,
       minDurationMinutes: 30,
     },
+    autoPresenceCalibration: {
+      enabled: false,
+    },
     scheduleOverrides: {
       temperatureSchedules: { disabled: false, expiresAt: '' },
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },
@@ -234,6 +237,9 @@ const createSettings = (): Settings => ({
       enabled: true,
       minDurationMinutes: 30,
     },
+    autoPresenceCalibration: {
+      enabled: false,
+    },
     scheduleOverrides: {
       temperatureSchedules: { disabled: false, expiresAt: '' },
       alarm: { disabled: false, timeOverride: '', expiresAt: '' },
@@ -256,11 +262,7 @@ const createSettings = (): Settings => ({
     }
   },
   primePodDaily: { enabled: true, time: '14:30' },
-  beta: {
-    autoPresenceCalibration: {
-      enabled: false,
-    },
-  },
+  beta: {},
 });
 
 const createServices = (): Services => ({

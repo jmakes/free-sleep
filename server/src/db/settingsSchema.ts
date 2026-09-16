@@ -51,10 +51,16 @@ const AnalyzeSleepSettingsSchema = z.object({
   minDurationMinutes: z.number().int().min(0).max(24 * 60),
 }).strict();
 
+/** Beta: schedule-prior auto presence calibration for this side. */
+const AutoPresenceCalibrationSchema = z.object({
+  enabled: z.boolean(),
+}).strict();
+
 const SideSettingsSchema = z.object({
   name: z.string().min(1).max(20),
   awayMode: z.boolean(),
   analyzeSleep: AnalyzeSleepSettingsSchema,
+  autoPresenceCalibration: AutoPresenceCalibrationSchema,
   scheduleOverrides: z.object({
     temperatureSchedules: z.object({
       disabled: z.boolean(),
@@ -73,13 +79,11 @@ const SideSettingsSchema = z.object({
   })
 }).strict();
 
-/** Beta features — off by default; may change behavior aggressively. */
-const BetaSettingsSchema = z.object({
-  /** Schedule-prior auto presence calibration (worn-sensor friendly). */
-  autoPresenceCalibration: z.object({
-    enabled: z.boolean(),
-  }).strict(),
-}).strict();
+/**
+ * Reserved for future global beta flags.
+ * Auto presence calibration lives per-side (left/right.autoPresenceCalibration).
+ */
+const BetaSettingsSchema = z.object({}).strict();
 
 export const SettingsSchema = z.object({
   id: z.string(),

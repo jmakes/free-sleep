@@ -9,10 +9,9 @@ import {
 } from '@mui/material';
 import Section from '../Section.tsx';
 import { Services, useServices, postServices } from '@api/services.ts';
-import { useSettings, postSettings } from '@api/settings.ts';
+import { useSettings } from '@api/settings.ts';
 import { useAppStore } from '@state/appStore.tsx';
 import { DeepPartial } from 'ts-essentials';
-import { Settings } from '@api/settingsSchema.ts';
 import { postJobs } from '@api/jobs.ts';
 import Button from '@mui/material/Button';
 
@@ -34,19 +33,11 @@ export default function FeaturesSection() {
       .finally(() => setIsUpdating(false));
   };
 
-  const updateSettings = (next: DeepPartial<Settings>) => {
-    setIsUpdating(true);
-    postSettings(next)
-      .then(() => refetchSettings())
-      .catch(error => {
-        console.error(error);
-      })
-      .finally(() => setIsUpdating(false));
-  };
-
   if (isLoading || !services || !settings) return <CircularProgress />;
 
-  const autoCalEnabled = Boolean(settings.beta?.autoPresenceCalibration?.enabled);
+  const sideAutoCal = Boolean(settings[side]?.autoPresenceCalibration?.enabled);
+  const leftOn = Boolean(settings.left?.autoPresenceCalibration?.enabled);
+  const rightOn = Boolean(settings.right?.autoPresenceCalibration?.enabled);
 
   return (
     <Section title='Features'>
@@ -92,39 +83,23 @@ export default function FeaturesSection() {
       <Typography variant="subtitle1" sx={ { fontWeight: 600 } }>
         Beta
       </Typography>
-      <FormControlLabel
-        control={
-          <Switch
-            disabled={ isUpdating || !services.biometrics.enabled }
-            checked={ autoCalEnabled }
-            onChange={ (event) => updateSettings({
-              beta: { autoPresenceCalibration: { enabled: event.target.checked } },
-            }) }
-          />
-        }
-        label="Auto presence calibration"
-      />
-      <Box display='flex' gap={ 1 } sx={ { mb: 1 } }>
-        <InfoIcon sx={ { color: 'text.secondary' } }/>
-        <Typography color='text.secondary' variant="body2">
-          Weekly (Wed 3pm) schedule-prior recalibration over the last 14 days.
-          Blends into existing thresholds so worn pads with smaller swings can still
-          register occupancy. Piezo floor never drops below 50k (cross-talk).
-          Turn this off if you often sleep with the Pod powered off — schedule priors
-          get noisy then. Sides in Away mode use a strong empty prior (no occupied fit from schedule).
-          Manual guided calibration still wins when you run it.
-        </Typography>
-      </Box>
+      <Typography color='text.secondary' variant="body2" sx={ { mb: 1 } }>
+        Auto presence calibration is per-side under Side settings
+        (left: { leftOn ? 'on' : 'off' }, right: { rightOn ? 'on' : 'off' }).
+        Weekly Wed 3pm, 14-day schedule prior, 35% blend, piezo floor ≥50k.
+        Away mode uses a strong empty prior. Manual guided calibration still wins.
+      </Typography>
       <Button
         size="small"
         variant="outlined"
-        disabled={ isUpdating || !autoCalEnabled || !services.biometrics.enabled }
+        disabled={ isUpdating || !sideAutoCal || !services.biometrics.enabled }
         onClick={ () => {
           const job = side === 'left'
             ? 'autoPresenceCalibrationLeft'
             : 'autoPresenceCalibrationRight';
           setIsUpdating(true);
           postJobs([job])
+            .then(() => refetchSettings())
             .catch(console.error)
             .finally(() => setIsUpdating(false));
         } }

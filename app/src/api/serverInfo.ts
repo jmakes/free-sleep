@@ -30,26 +30,19 @@ export const getLatestVersion = async () => {
   return axios.get<LatestVersion>(url);
 };
 
-/** True when remote is newer by semver, or same/newer semver with a different stamped commit. */
+/**
+ * Update offer is version-based only.
+ * Build/deploy stamps HEAD into serverInfo.commit, which often differs from the
+ * commit field last pushed to GitHub — that must not look like an available update.
+ */
 export function isRemoteNewer(remote: LatestVersion, local: { version: string; commit?: string }): boolean {
   const remoteVer = remote.version;
   const localVer = local.version;
 
   if (semver.valid(remoteVer) && semver.valid(localVer)) {
-    if (semver.gt(remoteVer, localVer)) return true;
-    if (semver.lt(remoteVer, localVer)) return false;
-    // Same version — fall through to commit compare
-  } else if (remoteVer !== localVer) {
-    // Non-semver fallback: any string difference means "maybe update"
-    return true;
+    return semver.gt(remoteVer, localVer);
   }
-
-  const remoteCommit = remote.commit?.trim();
-  const localCommit = local.commit?.trim();
-  if (remoteCommit && localCommit && remoteCommit !== localCommit) {
-    return true;
-  }
-  return false;
+  return remoteVer !== localVer;
 }
 
 

@@ -22,6 +22,7 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
   const analyzeSleep = settings?.[side]?.analyzeSleep;
   const analyzeEnabled = analyzeSleep?.enabled ?? true;
   const savedMinDuration = analyzeSleep?.minDurationMinutes ?? 30;
+  const autoCalEnabled = settings?.[side]?.autoPresenceCalibration?.enabled ?? false;
 
   // Local state for text fields
   const [sideName, setSideName] = useState(settings?.[side]?.name || '');
@@ -108,6 +109,21 @@ export default function SideSettings({ side, settings, updateSettings }: AwayMod
           onBlur={ handleMinDurationBlur }
         />
       ) }
+      <Grid container spacing={ 0 } sx={ { width: '100%', mt: 0.5, alignItems: 'center' } }>
+        <Typography alignContent="center">Auto presence cal (beta)</Typography>
+        <Switch
+          disabled={ isUpdating }
+          checked={ autoCalEnabled }
+          onChange={ (event) => updateSettings({
+            [side]: {
+              autoPresenceCalibration: { enabled: event.target.checked },
+            },
+          }) }
+        />
+      </Grid>
+      <Typography color="text.secondary" variant="caption" sx={ { width: '100%', mt: 0.5 } }>
+        Weekly schedule-prior recalibration for this side only. Away mode forces a strong empty prior.
+      </Typography>
       <TapControls side={ side } settings={ settings } updateSettings={ updateSettings } />
     </Box>
   );

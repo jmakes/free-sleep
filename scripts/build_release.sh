@@ -32,7 +32,7 @@ npm run generate:local 2>/dev/null || npm run generate || true
 
 echo ""
 echo "==> Stamping git commit into serverInfo.json"
-echo "    (Bump server/src/serverInfo.json version when shipping — UI compares semver + commit)"
+echo "    (Bump server/src/serverInfo.json version when shipping — UI compares semver only)"
 COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
 if [ -n "$COMMIT" ]; then
   node -e '

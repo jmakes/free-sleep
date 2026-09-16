@@ -5,8 +5,8 @@ import servicesDB from '../db/services.js';
 import logger from '../logger.js';
 
 /**
- * Schedule-prior auto presence calibration (beta).
- * Gated by biometrics + settings.beta.autoPresenceCalibration.enabled.
+ * Schedule-prior auto presence calibration (beta, per-side).
+ * Gated by biometrics + settings[side].autoPresenceCalibration.enabled.
  */
 export const executeAutoPresenceCalibration = async (
   side: Side,
@@ -19,8 +19,8 @@ export const executeAutoPresenceCalibration = async (
     logger.info(`Skipping auto presence cal (${side}): biometrics disabled`);
     return;
   }
-  if (!settingsDB.data.beta?.autoPresenceCalibration?.enabled) {
-    logger.info(`Skipping auto presence cal (${side}): beta toggle off`);
+  if (!settingsDB.data[side]?.autoPresenceCalibration?.enabled) {
+    logger.info(`Skipping auto presence cal (${side}): side toggle off`);
     return;
   }
   const apply = options.apply !== false;

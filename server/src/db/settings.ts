@@ -13,6 +13,9 @@ const defaultSideSettings: SideSettings = {
     enabled: true,
     minDurationMinutes: 30,
   },
+  autoPresenceCalibration: {
+    enabled: false,
+  },
   scheduleOverrides: {
     temperatureSchedules: {
       disabled: false,
@@ -61,11 +64,7 @@ const defaultData: Settings = {
     enabled: false,
     time: '14:00',
   },
-  beta: {
-    autoPresenceCalibration: {
-      enabled: false,
-    },
-  },
+  beta: {},
 };
 
 /** Old shipped defaults we replace when migrating off singleTap / scheduleApply-quad */
@@ -103,6 +102,16 @@ const file = new JSONFile<Settings>(`${config.lowDbFolder}settingsDB.json`);
 const settingsDB = new Low<Settings>(file, defaultData);
 await settingsDB.read();
 
+// Capture pre-merge disk values so defaults don't swallow migrations.
+type LegacyBeta = { autoPresenceCalibration?: { enabled?: boolean } };
+type RawSide = { autoPresenceCalibration?: { enabled?: boolean } };
+const rawBeta = (settingsDB.data as { beta?: LegacyBeta } | null)?.beta;
+const legacyGlobalAutoCal = Boolean(rawBeta?.autoPresenceCalibration?.enabled);
+const rawSideAutoCal: Record<'left' | 'right', boolean | undefined> = {
+  left: (settingsDB.data as { left?: RawSide } | null)?.left?.autoPresenceCalibration?.enabled,
+  right: (settingsDB.data as { right?: RawSide } | null)?.right?.autoPresenceCalibration?.enabled,
+};
+
 // Migrate tap mappings: strip singleTap and adopt multi-tap defaults when still on legacy set
 for (const side of ['left', 'right'] as const) {
   const taps = settingsDB.data?.[side]?.taps as Record<string, unknown> | undefined;
@@ -115,8 +124,9 @@ for (const side of ['left', 'right'] as const) {
 
 settingsDB.data = _.merge({}, defaultData, settingsDB.data);
 
-// Ensure each side has only the three multi-tap keys (don't resurrect singleTap)
-// and analyzeSleep defaults if missing from older installs
+// Ensure multi-tap keys, analyzeSleep, and per-side auto-cal.
+// Migrate legacy global beta.autoPresenceCalibration → both sides if set.
+settingsDB.data.beta = {};
 for (const side of ['left', 'right'] as const) {
   settingsDB.data[side].taps = {
     doubleTap: settingsDB.data[side].taps?.doubleTap ?? defaultSideSettings.taps.doubleTap,
@@ -131,15 +141,10 @@ for (const side of ['left', 'right'] as const) {
       settingsDB.data[side].analyzeSleep?.minDurationMinutes ??
       defaultSideSettings.analyzeSleep.minDurationMinutes,
   };
+  settingsDB.data[side].autoPresenceCalibration = {
+    enabled: rawSideAutoCal[side] ?? legacyGlobalAutoCal,
+  };
 }
-
-
-// Ensure beta defaults for older settingsDB.json installs
-settingsDB.data.beta = {
-  autoPresenceCalibration: {
-    enabled: settingsDB.data.beta?.autoPresenceCalibration?.enabled ?? false,
-  },
-};
 
 await settingsDB.write();
 
