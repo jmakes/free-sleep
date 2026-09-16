@@ -48,12 +48,15 @@ export default function Slider({ isOn, currentTargetTemp, refetch, currentTemper
   const sliderSize = width && width > 0 ? width : 320;
 
   const handleControlFinished = async () => {
-    if (!deviceStatus) return;
+    // Read latest target at drag-finish — avoid stale hook closure mid-drag.
+    const { deviceStatus: latest } = useControlTempStore.getState();
+    const targetTemperatureF = latest?.[side]?.targetTemperatureF;
+    if (targetTemperatureF == null) return;
 
     setIsUpdating(true);
     void postDeviceStatus({
       [side]: {
-        targetTemperatureF: deviceStatus[side].targetTemperatureF
+        targetTemperatureF,
       }
     })
       .then(() => {
