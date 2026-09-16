@@ -2,6 +2,7 @@ import express from 'express';
 import logger from '../../logger.js';
 import { executeAnalyzeSleep } from '../../jobs/analyzeSleep.js';
 import { executeCalibrateSensors } from '../../jobs/calibrateSensors.js';
+import { executeAutoPresenceCalibration } from '../../jobs/autoPresenceCalibration.js';
 import moment from 'moment-timezone';
 import { JobKeyListSchema } from './jobsSchema.js';
 import update from '../../jobs/update.js';
@@ -15,11 +16,19 @@ const analyzeSleepRight = () => {
 };
 const biometricsCalibrationLeft = () => executeCalibrateSensors('left', moment().subtract(2, 'hours').toISOString(), moment().add(1, 'hours').toISOString());
 const biometricsCalibrationRight = () => executeCalibrateSensors('right', moment().subtract(2, 'hours').toISOString(), moment().add(1, 'hours').toISOString());
+const autoPresenceCalibrationLeft = () => {
+    void executeAutoPresenceCalibration('left', { apply: true, days: 14 });
+};
+const autoPresenceCalibrationRight = () => {
+    void executeAutoPresenceCalibration('right', { apply: true, days: 14 });
+};
 const JOB_MAP = {
     analyzeSleepLeft,
     analyzeSleepRight,
     biometricsCalibrationLeft,
     biometricsCalibrationRight,
+    autoPresenceCalibrationLeft,
+    autoPresenceCalibrationRight,
     reboot,
     update,
 };

@@ -11,6 +11,7 @@ import { isSystemDateValid } from './isSystemDateValid.js';
 import { scheduleAlarm, scheduleAlarmOverride } from './alarmScheduler.js';
 import { schedulePowerOffAndSleepAnalysis, schedulePowerOn } from './powerScheduler.js';
 import { schedulePrimingRebootAndCalibration } from './primeScheduler.js';
+import { scheduleAutoPresenceCalibration } from './autoPresenceCalibrationScheduler.js';
 import { scheduleTemperatures } from './temperatureScheduler.js';
 async function setupJobs() {
     try {
@@ -42,6 +43,7 @@ async function setupJobs() {
             });
         });
         schedulePrimingRebootAndCalibration(settingsData);
+        scheduleAutoPresenceCalibration(settingsData);
         logger.info('Done scheduling jobs!');
         serverStatus.status.alarmSchedule.status = 'healthy';
         serverStatus.status.jobs.status = 'healthy';

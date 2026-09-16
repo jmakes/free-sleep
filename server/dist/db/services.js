@@ -53,7 +53,23 @@ const defaultData = {
                 description: 'Quick empty-bed baseline for the right side (cap mean/std + rough piezo floor). ' +
                     'Preferred: Data → Sensors → Guided Calibration (unoccupied/center/inner/outer ×2, averaged).',
                 timestamp: '',
-            }
+            },
+            autoCalibrateLeft: {
+                name: 'Auto presence cal - Left',
+                message: '',
+                status: 'not_started',
+                description: 'Beta: schedule-prior auto presence calibration for the left side ' +
+                    '(sliding window, blended thresholds, piezo floor ≥50k).',
+                timestamp: '',
+            },
+            autoCalibrateRight: {
+                name: 'Auto presence cal - Right',
+                message: '',
+                status: 'not_started',
+                description: 'Beta: schedule-prior auto presence calibration for the right side ' +
+                    '(sliding window, blended thresholds, piezo floor ≥50k).',
+                timestamp: '',
+            },
         }
     }
 };

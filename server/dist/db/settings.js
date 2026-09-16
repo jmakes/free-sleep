@@ -10,6 +10,9 @@ const defaultSideSettings = {
         enabled: true,
         minDurationMinutes: 30,
     },
+    autoPresenceCalibration: {
+        enabled: false,
+    },
     scheduleOverrides: {
         temperatureSchedules: {
             disabled: false,
@@ -57,6 +60,7 @@ const defaultData = {
         enabled: false,
         time: '14:00',
     },
+    beta: {},
 };
 /** Old shipped defaults we replace when migrating off singleTap / scheduleApply-quad */
 function isLegacyTapDefaults(taps) {
@@ -89,6 +93,12 @@ function isLegacyTapDefaults(taps) {
 const file = new JSONFile(`${config.lowDbFolder}settingsDB.json`);
 const settingsDB = new Low(file, defaultData);
 await settingsDB.read();
+const rawBeta = settingsDB.data?.beta;
+const legacyGlobalAutoCal = Boolean(rawBeta?.autoPresenceCalibration?.enabled);
+const rawSideAutoCal = {
+    left: settingsDB.data?.left?.autoPresenceCalibration?.enabled,
+    right: settingsDB.data?.right?.autoPresenceCalibration?.enabled,
+};
 // Migrate tap mappings: strip singleTap and adopt multi-tap defaults when still on legacy set
 for (const side of ['left', 'right']) {
     const taps = settingsDB.data?.[side]?.taps;
@@ -100,8 +110,9 @@ for (const side of ['left', 'right']) {
     }
 }
 settingsDB.data = _.merge({}, defaultData, settingsDB.data);
-// Ensure each side has only the three multi-tap keys (don't resurrect singleTap)
-// and analyzeSleep defaults if missing from older installs
+// Ensure multi-tap keys, analyzeSleep, and per-side auto-cal.
+// Migrate legacy global beta.autoPresenceCalibration → both sides if set.
+settingsDB.data.beta = {};
 for (const side of ['left', 'right']) {
     settingsDB.data[side].taps = {
         doubleTap: settingsDB.data[side].taps?.doubleTap ?? defaultSideSettings.taps.doubleTap,
@@ -113,6 +124,9 @@ for (const side of ['left', 'right']) {
             defaultSideSettings.analyzeSleep.enabled,
         minDurationMinutes: settingsDB.data[side].analyzeSleep?.minDurationMinutes ??
             defaultSideSettings.analyzeSleep.minDurationMinutes,
+    };
+    settingsDB.data[side].autoPresenceCalibration = {
+        enabled: rawSideAutoCal[side] ?? legacyGlobalAutoCal,
     };
 }
 await settingsDB.write();
