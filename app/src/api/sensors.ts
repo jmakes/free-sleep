@@ -179,3 +179,31 @@ export const postPoseCalibration = async (body: {
     throw error;
   }
 };
+
+export type SensorThresholds = {
+  side: 'left' | 'right';
+  exists: boolean;
+  path: string;
+  mtime: string | null;
+  capZoneThreshold: number;
+  piezoRangeThreshold: number;
+  capMethod: string;
+  source: string | null;
+  manualOverrideAt: string | null;
+  personalized: boolean;
+};
+
+export const fetchSensorThresholds = (side: 'left' | 'right') =>
+  axios.get<SensorThresholds>(`/sensors/thresholds?side=${side}`).then((r) => r.data);
+
+export const putSensorThresholds = (
+  side: 'left' | 'right',
+  body: { capZoneThreshold?: number; piezoRangeThreshold?: number },
+) =>
+  axios
+    .put<{ ok: boolean; thresholds: SensorThresholds; error?: string }>(
+      '/sensors/thresholds',
+      { side, ...body },
+    )
+    .then((r) => r.data);
+

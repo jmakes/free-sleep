@@ -1,9 +1,13 @@
 import express from 'express';
 import { readSideSensorSnapshot } from '../../8sleep/rawSensorReader.js';
 import { runPoseCalibration, } from '../../8sleep/poseCalibration.js';
+import { getSensorThresholds, patchSensorThresholds, } from '../../8sleep/sensorProfile.js';
 const router = express.Router();
 const POSES = ['unoccupied', 'center', 'inner', 'outer'];
 const ACTIONS = ['capture', 'status', 'finalize', 'reset'];
+function parseSide(value) {
+    return value === 'left' ? 'left' : 'right';
+}
 /**
  * Latest cap + piezo snapshot for one side from the Pod .RAW tail.
  * GET /api/sensors/live?side=left|right
@@ -11,8 +15,7 @@ const ACTIONS = ['capture', 'status', 'finalize', 'reset'];
  * Only used while the Sensors UI is streaming (client Start/Stop).
  */
 router.get('/live', async (req, res) => {
-    const sideParam = typeof req.query.side === 'string' ? req.query.side : 'right';
-    const side = sideParam === 'left' ? 'left' : 'right';
+    const side = parseSide(req.query.side);
     try {
         const snapshot = await readSideSensorSnapshot(side);
         res.json(snapshot);
@@ -27,14 +30,59 @@ router.get('/live', async (req, res) => {
     }
 });
 /**
+ * Current presence thresholds from `{side}_cap_baseline.json`.
+ * GET /api/sensors/thresholds?side=left|right
+ */
+router.get('/thresholds', (req, res) => {
+    const side = parseSide(req.query.side);
+    try {
+        res.json(getSensorThresholds(side));
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ ok: false, error: message });
+    }
+});
+/**
+ * Manual threshold override (cap max-z + piezo floor).
+ * PUT /api/sensors/thresholds  body: { side, capZoneThreshold?, piezoRangeThreshold? }
+ * Sticks until the next auto or guided calibration overwrites the baseline.
+ */
+router.put('/thresholds', (req, res) => {
+    const body = req.body ?? {};
+    const side = parseSide(body.side);
+    const patch = {};
+    if (body.capZoneThreshold !== undefined) {
+        patch.capZoneThreshold = Number(body.capZoneThreshold);
+    }
+    if (body.piezoRangeThreshold !== undefined) {
+        patch.piezoRangeThreshold = Number(body.piezoRangeThreshold);
+    }
+    if (patch.capZoneThreshold === undefined && patch.piezoRangeThreshold === undefined) {
+        res.status(400).json({
+            ok: false,
+            error: 'Provide capZoneThreshold and/or piezoRangeThreshold',
+        });
+        return;
+    }
+    try {
+        const thresholds = patchSensorThresholds(side, patch);
+        res.json({ ok: true, thresholds });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const missing = /No .* calibration baseline/i.test(message);
+        res.status(missing ? 404 : 400).json({ ok: false, error: message });
+    }
+});
+/**
  * Multi-pose calibration wizard API.
  * GET  /api/sensors/calibrate-pose?side=left|right          → status
  * POST /api/sensors/calibrate-pose
  *   body: { side, action: capture|status|finalize|reset, pose?, seconds? }
  */
 router.get('/calibrate-pose', async (req, res) => {
-    const sideParam = typeof req.query.side === 'string' ? req.query.side : 'right';
-    const side = sideParam === 'left' ? 'left' : 'right';
+    const side = parseSide(req.query.side);
     try {
         const result = await runPoseCalibration({ side, action: 'status' });
         res.json(result);

@@ -12,15 +12,12 @@ import { Services, useServices, postServices } from '@api/services.ts';
 import { useSettings } from '@api/settings.ts';
 import { useAppStore } from '@state/appStore.tsx';
 import { DeepPartial } from 'ts-essentials';
-import { postJobs } from '@api/jobs.ts';
-import Button from '@mui/material/Button';
 
 export default function FeaturesSection() {
   const { data: services, refetch, isLoading } = useServices();
-  const { data: settings, refetch: refetchSettings } = useSettings();
+  const { data: settings } = useSettings();
   const setIsUpdating = useAppStore(state => state.setIsUpdating);
   const isUpdating = useAppStore(state => state.isUpdating);
-  const side = useAppStore(state => state.side);
 
   const updateServices = (services: DeepPartial<Services>) => {
     setIsUpdating(true);
@@ -35,7 +32,6 @@ export default function FeaturesSection() {
 
   if (isLoading || !services || !settings) return <CircularProgress />;
 
-  const sideAutoCal = Boolean(settings[side]?.autoPresenceCalibration?.enabled);
   const leftOn = Boolean(settings.left?.autoPresenceCalibration?.enabled);
   const rightOn = Boolean(settings.right?.autoPresenceCalibration?.enabled);
 
@@ -83,29 +79,10 @@ export default function FeaturesSection() {
       <Typography variant="subtitle1" sx={ { fontWeight: 600 } }>
         Beta
       </Typography>
-      <Typography color='text.secondary' variant="body2" sx={ { mb: 1 } }>
-        Auto presence calibration is per-side under Side settings
+      <Typography color='text.secondary' variant="body2">
+        Auto presence calibration and manual threshold edits are under Side settings
         (left: { leftOn ? 'on' : 'off' }, right: { rightOn ? 'on' : 'off' }).
-        Weekly Wed 3pm, 14-day schedule prior, 35% blend, piezo floor ≥50k.
-        Away mode uses a strong empty prior. Manual guided calibration still wins.
       </Typography>
-      <Button
-        size="small"
-        variant="outlined"
-        disabled={ isUpdating || !sideAutoCal || !services.biometrics.enabled }
-        onClick={ () => {
-          const job = side === 'left'
-            ? 'autoPresenceCalibrationLeft'
-            : 'autoPresenceCalibrationRight';
-          setIsUpdating(true);
-          postJobs([job])
-            .then(() => refetchSettings())
-            .catch(console.error)
-            .finally(() => setIsUpdating(false));
-        } }
-      >
-        Run auto-cal now ({ side })
-      </Button>
     </Section>
   );
 }
