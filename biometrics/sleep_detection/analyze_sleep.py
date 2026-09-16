@@ -120,24 +120,36 @@ if __name__ == "__main__":
         )
         occupancy_mode = merged_df.attrs.get('occupancy_mode', 'unknown')
         recalibrate_hint = merged_df.attrs.get('recalibrate_hint', '') or ''
+        diag_summary = merged_df.attrs.get('presence_diagnostics_summary', '') or ''
+        piezo_floor = merged_df.attrs.get('piezo_floor')
+        cap_threshold = merged_df.attrs.get('cap_threshold')
 
         detect_movement(args.side, merged_df)
+
+        thresh_bits = []
+        if piezo_floor is not None:
+            thresh_bits.append(f'piezo_floor={int(piezo_floor):,}')
+        if cap_threshold is not None:
+            thresh_bits.append(f'cap_max_z={cap_threshold}')
+        thresh_str = f' [{", ".join(thresh_bits)}]' if thresh_bits else ''
 
         if sleep_count > 0:
             finish_msg = (
                 f'Finished analyzing {args.side}: saved {sleep_count} sleep record(s) '
-                f'(mode={occupancy_mode})'
+                f'(mode={occupancy_mode}){thresh_str}'
             )
         elif occupied_rows == 0:
             finish_msg = (
-                f'No occupancy on {args.side} (mode={occupancy_mode}). '
+                f'No occupancy on {args.side} (mode={occupancy_mode}){thresh_str}. '
                 f'Empty bed or sensors offline — check biometrics stream / RAW files.'
             )
         else:
             finish_msg = (
-                f'Occupancy on {args.side} ({occupied_rows:,} samples, mode={occupancy_mode}) '
-                f'but no sleep period >3h with gaps ≤15m.'
+                f'Occupancy on {args.side} ({occupied_rows:,} samples, mode={occupancy_mode})'
+                f'{thresh_str} but no sleep period >3h with gaps ≤15m.'
             )
+        if diag_summary:
+            finish_msg = f'{finish_msg} | {diag_summary}'
         if recalibrate_hint:
             finish_msg = f'{finish_msg} | {recalibrate_hint}'
 

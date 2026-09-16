@@ -36,8 +36,9 @@ User data lives under **`/persistent/free-sleep-data/`** and is **not** wiped by
 | Cover multi-tap controls | Done | double/triple/quad + haptics |
 | Auto sleep analyze on power-off | Done | per-side setting + min duration |
 | Schedule saves default to all days | Done | |
-| Live **Sensors** view | In progress | Data → Sensors |
-| **OEM-style occupied multi-pose calibration wizard** | TODO | Guided empty + on-back + roll; live confirm sensors; optional occupied envelope. Complements empty-bed cap baseline. |
+| Live **Sensors** view | Done | Data → Sensors (live + thresholds) |
+| **Guided Calibration** | Done | Data → Sensors: ≥2× unoccupied/center/inner/outer (reps averaged) → max-z + piezo floor |
+| Sleep presence fusion | Done | Cap max-z (not sum); piezo-primary OR soft-assist; per-side piezo floor; analyze diagnostics |
 | Person-first UI shell (Left / Right / House) | TODO | Parked until sleep path is solid |
 | Off-box analysis APIs (#6) | TODO | Only if on-device resources are insufficient |
 

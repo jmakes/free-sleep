@@ -41,6 +41,18 @@ from cap_data import load_cap_df, create_cap_baseline_from_cap_df, save_baseline
 from resource_usage import get_memory_usage_unix, get_available_memory_mb
 from biometrics_helpers import validate_datetime_utc
 from service_health import update_health, is_biometrics_enabled
+try:
+    from presence_config import (
+        DEFAULT_CAP_METHOD,
+        DEFAULT_CAP_ZONE_THRESHOLD,
+        DEFAULT_PIEZO_RANGE_THRESHOLD,
+    )
+except ImportError:
+    from sleep_detection.presence_config import (
+        DEFAULT_CAP_METHOD,
+        DEFAULT_CAP_ZONE_THRESHOLD,
+        DEFAULT_PIEZO_RANGE_THRESHOLD,
+    )
 
 
 def _parse_args() -> Union[Namespace, None]:
@@ -92,6 +104,8 @@ def calibrate_sensor_thresholds(side: Side, start_time: datetime, end_time: date
     )
 
     piezo_df = load_piezo_df(data, side, expected_row_count=expected_row_count)
+    # High range_threshold so identify_baseline_period still sees empty windows;
+    # we keep range columns for empty-period piezo floor estimation.
     detect_presence_piezo(
         piezo_df,
         side,
@@ -99,31 +113,71 @@ def calibrate_sensor_thresholds(side: Side, start_time: datetime, end_time: date
         threshold_percent=0.70,
         range_threshold=80_000,
         range_rolling_seconds=10,
-        clean=False
+        clean=False,
     )
 
     cap_df = load_cap_df(data, side, expected_row_count=expected_row_count)
-    # Cleanup data
     del data
     gc.collect()
 
     merged_df = piezo_df.merge(cap_df, on='ts', how='inner')
-    # Free up memory from old dfs
     piezo_df.drop(piezo_df.index, inplace=True)
     cap_df.drop(cap_df.index, inplace=True)
     del piezo_df
     del cap_df
     gc.collect()
 
-    # Create baseline
-    baseline_start_time, baseline_end_time = identify_baseline_period(merged_df, side, threshold_range=10_000, empty_minutes=5)
-    cap_baseline = create_cap_baseline_from_cap_df(merged_df, baseline_start_time, baseline_end_time, side, min_std=5)
-    save_baseline(side, cap_baseline)
+    baseline_start_time, baseline_end_time = identify_baseline_period(
+        merged_df, side, threshold_range=10_000, empty_minutes=5
+    )
+    if baseline_start_time is None or baseline_end_time is None:
+        raise RuntimeError(
+            f'No empty-bed window found for {side} in the selected range. '
+            f'Leave the bed empty for ≥5 minutes and re-run calibration.'
+        )
 
-    # Cleanup
+    cap_baseline = create_cap_baseline_from_cap_df(
+        merged_df, baseline_start_time, baseline_end_time, side, min_std=5
+    )
+
+    # Optional per-side piezo floor from empty-window ranges (p99 × margin).
+    # Multi-pose calibration can override this later with a tighter floor.
+    range_col = f'{side}1_range'
+    extra = {
+        'cap_method': DEFAULT_CAP_METHOD,
+        'cap_zone_threshold': DEFAULT_CAP_ZONE_THRESHOLD,
+        'fusion_mode': 'piezo_primary',
+        'empty_window': {
+            'start': baseline_start_time.isoformat(),
+            'end': baseline_end_time.isoformat(),
+        },
+        'source': 'empty_bed_auto',
+    }
+    if range_col in merged_df.columns:
+        empty_slice = merged_df.loc[baseline_start_time:baseline_end_time]
+        ranges = empty_slice[range_col].dropna()
+        if len(ranges) > 0:
+            empty_p99 = float(ranges.quantile(0.99))
+            # Floor sits above empty noise but below default if empty is quiet.
+            estimated = int(max(empty_p99 * 3.0, empty_p99 + 15_000))
+            # Clamp to a sensible band so a noisy empty doesn't explode the floor.
+            estimated = int(min(max(estimated, 25_000), 150_000))
+            extra['piezo_range_threshold'] = estimated
+            extra['piezo_empty_p99'] = int(empty_p99)
+            logger.info(
+                f'{side} empty piezo p99={empty_p99:,.0f} → piezo_range_threshold={estimated:,}'
+            )
+        else:
+            extra['piezo_range_threshold'] = DEFAULT_PIEZO_RANGE_THRESHOLD
+    else:
+        extra['piezo_range_threshold'] = DEFAULT_PIEZO_RANGE_THRESHOLD
+
+    save_baseline(side, cap_baseline, extra=extra)
+
     merged_df.drop(merged_df.index, inplace=True)
     del merged_df
     gc.collect()
+
 
 
 def calibrate_both_sides():

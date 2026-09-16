@@ -19,23 +19,79 @@ from pathlib import Path
 import cbor2
 import numpy as np
 
+# Allow importing sleep_detection.presence_config when run as a script
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
 RAW_DIRS = [
     '/persistent',
     os.environ.get('RAW_DATA_FOLDER') or '',
 ]
 
-# Same parameters as sleep_detection/sleep_detector.py → detect_presence_*
-CAP_OCCUPANCY_THRESHOLD = 5.0   # sum of per-zone z-scores
-CAP_ROLLING_SECONDS = 10
-CAP_THRESHOLD_PERCENT = 0.90
-PIEZO_RANGE_THRESHOLD = 20_000  # packet range (max-min) for presence
-PIEZO_ROLLING_SECONDS = 10
-PIEZO_THRESHOLD_PERCENT = 0.70
-
 DATA_FOLDERS = [
     '/persistent/free-sleep-data/',
     os.environ.get('DATA_FOLDER') or '',
 ]
+
+
+def _import_presence_config():
+    """Import presence_config with fallbacks when logger folder isn't set up."""
+    try:
+        from sleep_detection.presence_config import (  # type: ignore
+            thresholds_for_snapshot,
+            load_sensor_profile,
+            get_piezo_range_threshold,
+            get_cap_zone_threshold,
+            get_cap_method,
+            DEFAULT_CAP_ZONE_THRESHOLD,
+            DEFAULT_PIEZO_RANGE_THRESHOLD,
+        )
+        return {
+            'thresholds_for_snapshot': thresholds_for_snapshot,
+            'load_sensor_profile': load_sensor_profile,
+            'get_piezo_range_threshold': get_piezo_range_threshold,
+            'get_cap_zone_threshold': get_cap_zone_threshold,
+            'get_cap_method': get_cap_method,
+            'DEFAULT_CAP_ZONE_THRESHOLD': DEFAULT_CAP_ZONE_THRESHOLD,
+            'DEFAULT_PIEZO_RANGE_THRESHOLD': DEFAULT_PIEZO_RANGE_THRESHOLD,
+        }
+    except Exception:
+        # Minimal fallback if biometrics logger / deps aren't available
+        def thresholds_for_snapshot(side: str):
+            return {
+                'cap': {
+                    'method': 'max_z',
+                    'occupancyThreshold': 2.0,
+                    'rollingSeconds': 10,
+                    'thresholdPercent': 0.90,
+                    'description': 'Cap: max of per-zone z-scores vs empty baseline.',
+                },
+                'piezo': {
+                    'rangeThreshold': 50_000,
+                    'rollingSeconds': 10,
+                    'thresholdPercent': 0.70,
+                    'personalized': False,
+                    'description': 'Piezo: packet range ≥ 50,000 (default).',
+                },
+                'fusion': {
+                    'mode': 'piezo_primary',
+                    'description': 'Piezo-primary with cap soft assist (OR).',
+                },
+            }
+
+        return {
+            'thresholds_for_snapshot': thresholds_for_snapshot,
+            'load_sensor_profile': lambda side: {},
+            'get_piezo_range_threshold': lambda side, p=None: 50_000,
+            'get_cap_zone_threshold': lambda side, p=None: 2.0,
+            'get_cap_method': lambda side, p=None: 'max_z',
+            'DEFAULT_CAP_ZONE_THRESHOLD': 2.0,
+            'DEFAULT_PIEZO_RANGE_THRESHOLD': 50_000,
+        }
+
+
+_CFG = _import_presence_config()
 
 
 def find_latest_raw() -> Path | None:
@@ -61,7 +117,6 @@ def baseline_path(side: str) -> Path | None:
         path = Path(folder) / name
         if path.is_file():
             return path
-    # Common free-sleep layout
     for path in (
         Path('/persistent/free-sleep-data') / name,
         Path('/home/dac/free-sleep/server/free-sleep-data') / name,
@@ -78,7 +133,6 @@ def load_cap_baseline(side: str) -> dict | None:
     try:
         with open(path, 'r', encoding='utf-8') as handle:
             data = json.load(handle)
-        # Normalize keys: stored as right_out / left_cen etc.
         zones = {}
         for zone in ('out', 'cen', 'in'):
             key = f'{side}_{zone}'
@@ -93,22 +147,27 @@ def load_cap_baseline(side: str) -> dict | None:
             'path': str(path),
             'zones': zones,
             'mtime': datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+            'piezo_range_threshold': data.get('piezo_range_threshold'),
+            'cap_zone_threshold': data.get('cap_zone_threshold'),
+            'cap_method': data.get('cap_method'),
+            'source': data.get('source'),
+            'poses': data.get('poses'),
+            'version': data.get('version'),
         }
     except Exception:
         return None
 
 
-def compute_cap_vs_baseline(cap: dict, baseline: dict) -> dict:
-    """Per-zone z-score and combined score used by detect_presence_cap (single sample)."""
+def compute_cap_vs_baseline(cap: dict, baseline: dict, occupancy_threshold: float, method: str) -> dict:
+    """Per-zone z-score and max_z / sum_z score used by detect_presence_cap."""
     zones_out = {}
-    combined = 0.0
+    z_scores = []
     for zone in ('out', 'cen', 'in'):
         mean = baseline['zones'][zone]['mean']
         std = baseline['zones'][zone]['std'] or 1.0
         value = float(cap[zone])
         z = (value - mean) / std
-        combined += z
-        # Rough empty band for UI: mean ± 2*std
+        z_scores.append(z)
         zones_out[zone] = {
             'value': value,
             'mean': mean,
@@ -116,18 +175,23 @@ def compute_cap_vs_baseline(cap: dict, baseline: dict) -> dict:
             'zScore': round(z, 3),
             'emptyLow': round(mean - 2 * std, 1),
             'emptyHigh': round(mean + 2 * std, 1),
-            # Above empty band is a weak "something changed" hint (not the real detector)
             'aboveEmptyBand': value > mean + 2 * std,
         }
+    max_z = max(z_scores)
+    sum_z = sum(z_scores)
+    score = max_z if method != 'sum_z' else sum_z
     return {
         'zones': zones_out,
-        'combinedZ': round(combined, 3),
-        'occupancyThreshold': CAP_OCCUPANCY_THRESHOLD,
-        'aboveThreshold': combined > CAP_OCCUPANCY_THRESHOLD,
+        'maxZ': round(max_z, 3),
+        'sumZ': round(sum_z, 3),
+        # combinedZ kept for UI back-compat; now reflects active method score
+        'combinedZ': round(score, 3),
+        'method': method,
+        'occupancyThreshold': occupancy_threshold,
+        'aboveThreshold': score > occupancy_threshold,
         'note': (
-            f'Single-sample combined z-score vs threshold {CAP_OCCUPANCY_THRESHOLD}. '
-            f'Full sleep detection also requires ≥{int(CAP_THRESHOLD_PERCENT * 100)}% of '
-            f'{CAP_ROLLING_SECONDS}s window above threshold.'
+            f'Single-sample {method}={score:.2f} vs threshold {occupancy_threshold}. '
+            f'max_z={max_z:.2f} sum_z={sum_z:.2f}.'
         ),
     }
 
@@ -204,31 +268,29 @@ def main() -> int:
     side = args.side
     other = 'left' if side == 'right' else 'right'
 
-    thresholds = {
-        'cap': {
-            'occupancyThreshold': CAP_OCCUPANCY_THRESHOLD,
-            'rollingSeconds': CAP_ROLLING_SECONDS,
-            'thresholdPercent': CAP_THRESHOLD_PERCENT,
-            'description': (
-                'Cap: sum of z-scores for out/cen/in vs empty-bed baseline. '
-                f'Instant sample above {CAP_OCCUPANCY_THRESHOLD} counts toward occupancy; '
-                f'analysis needs ≥{int(CAP_THRESHOLD_PERCENT * 100)}% of a '
-                f'{CAP_ROLLING_SECONDS}s window.'
-            ),
-        },
-        'piezo': {
-            'rangeThreshold': PIEZO_RANGE_THRESHOLD,
-            'rollingSeconds': PIEZO_ROLLING_SECONDS,
-            'thresholdPercent': PIEZO_THRESHOLD_PERCENT,
-            'description': (
-                f'Piezo: packet range (max−min) ≥ {PIEZO_RANGE_THRESHOLD:,} counts as active; '
-                f'analysis needs ≥{int(PIEZO_THRESHOLD_PERCENT * 100)}% of a '
-                f'{PIEZO_ROLLING_SECONDS}s window.'
-            ),
-        },
-    }
+    thresholds = _CFG['thresholds_for_snapshot'](side)
+    piezo_floor = int(thresholds['piezo']['rangeThreshold'])
+    cap_thresh = float(thresholds['cap']['occupancyThreshold'])
+    cap_method = thresholds['cap'].get('method') or 'max_z'
 
     baseline = load_cap_baseline(side)
+    # Prefer values embedded in the baseline file if present
+    if baseline and baseline.get('piezo_range_threshold') is not None:
+        try:
+            piezo_floor = int(baseline['piezo_range_threshold'])
+            thresholds['piezo']['rangeThreshold'] = piezo_floor
+            thresholds['piezo']['personalized'] = True
+        except (TypeError, ValueError):
+            pass
+    if baseline and baseline.get('cap_zone_threshold') is not None:
+        try:
+            cap_thresh = float(baseline['cap_zone_threshold'])
+            thresholds['cap']['occupancyThreshold'] = cap_thresh
+        except (TypeError, ValueError):
+            pass
+    if baseline and baseline.get('cap_method'):
+        cap_method = baseline['cap_method']
+        thresholds['cap']['method'] = cap_method
 
     path = find_latest_raw()
     now = datetime.now(timezone.utc).isoformat()
@@ -243,7 +305,7 @@ def main() -> int:
                 'hint': (
                     None if baseline else
                     f'No {side}_cap_baseline.json — run Status → Calibrate {side} '
-                    f'(empty bed required).'
+                    f'or Sensors → Multi-pose calibration (empty bed required).'
                 ),
             },
             'error': (
@@ -294,8 +356,8 @@ def main() -> int:
                     continue
                 stats['ts'] = ts
                 stats['channel'] = channel
-                stats['rangeThreshold'] = PIEZO_RANGE_THRESHOLD
-                stats['aboveThreshold'] = stats['range'] >= PIEZO_RANGE_THRESHOLD
+                stats['rangeThreshold'] = piezo_floor
+                stats['aboveThreshold'] = stats['range'] >= piezo_floor
                 if channel == '1':
                     latest_piezo1 = stats
                 else:
@@ -305,7 +367,9 @@ def main() -> int:
 
     cap_eval = None
     if latest_cap and baseline:
-        cap_eval = compute_cap_vs_baseline(latest_cap, baseline)
+        cap_eval = compute_cap_vs_baseline(
+            latest_cap, baseline, cap_thresh, cap_method
+        )
 
     if not latest_cap and not latest_piezo1 and not latest_piezo2:
         json.dump({
@@ -319,7 +383,7 @@ def main() -> int:
                 'missing': baseline is None,
                 'hint': (
                     None if baseline else
-                    f'No {side}_cap_baseline.json — run Status → Calibrate {side} (empty bed).'
+                    f'No {side}_cap_baseline.json — run multi-pose or empty-bed calibration.'
                 ),
             },
             'error': (
@@ -330,7 +394,6 @@ def main() -> int:
         }, sys.stdout)
         return 0
 
-    # Simple live verdict for UI chips
     live_verdict = 'unknown'
     if cap_eval is not None and latest_piezo1 is not None:
         cap_on = cap_eval['aboveThreshold']
@@ -365,7 +428,7 @@ def main() -> int:
             'capEvaluation': cap_eval,
             'hint': (
                 None if baseline else
-                f'No {side}_cap_baseline.json — run Status → Calibrate {side} with an empty bed.'
+                f'No {side}_cap_baseline.json — run Sensors multi-pose or Status empty-bed calibration.'
             ),
         },
         'liveVerdict': live_verdict,

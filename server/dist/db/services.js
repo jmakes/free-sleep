@@ -42,16 +42,16 @@ const defaultData = {
                 name: 'Calibration job - Left',
                 message: '',
                 status: 'not_started',
-                description: 'Recalibrates left-side cap sensors for an UNOCCUPIED bed. ' +
-                    'Make sure nobody is on the left side before running. Uses recent empty-bed data to set presence baselines.',
+                description: 'Quick empty-bed baseline for the left side (cap mean/std + rough piezo floor). ' +
+                    'Preferred: Data → Sensors → Guided Calibration (unoccupied/center/inner/outer ×2, averaged).',
                 timestamp: '',
             },
             calibrateRight: {
                 name: 'Calibration job - Right',
                 message: '',
                 status: 'not_started',
-                description: 'Recalibrates right-side cap sensors for an UNOCCUPIED bed. ' +
-                    'Make sure nobody is on the right side before running. Uses recent empty-bed data to set presence baselines.',
+                description: 'Quick empty-bed baseline for the right side (cap mean/std + rough piezo floor). ' +
+                    'Preferred: Data → Sensors → Guided Calibration (unoccupied/center/inner/outer ×2, averaged).',
                 timestamp: '',
             }
         }

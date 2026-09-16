@@ -1,5 +1,6 @@
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import moment from 'moment-timezone';
+import { useNavigate } from 'react-router-dom';
 import { ServerStatusKey, StatusInfo } from '@api/serverStatusSchema.ts';
 import {
   Box,
@@ -28,6 +29,7 @@ const isAnalyzeJob = (job: ServerStatusKey) =>
   job === 'analyzeSleepLeft' || job === 'analyzeSleepRight';
 
 export default function StatusCard({ job, statusInfo }: StatusCardProps) {
+  const navigate = useNavigate();
   const timestamp = statusInfo.timestamp && moment(statusInfo.timestamp).format('YYYY-MM-DD HH:mm:ss z');
   let isRunnable = false;
   // @ts-expect-error
@@ -39,9 +41,9 @@ export default function StatusCard({ job, statusInfo }: StatusCardProps) {
     if (isCalibrationJob(job)) {
       const side = job === 'biometricsCalibrationLeft' ? 'left' : 'right';
       const ok = window.confirm(
-        `Recalibrate ${side} side sensors for an UNOCCUPIED bed.\n\n` +
+        `Quick empty-bed calibrate for the ${side} side.\n\n` +
         `Make sure nobody is lying on the ${side} side before you continue.\n\n` +
-        'The job looks for empty-bed signal in recent sensor data and saves a new baseline.'
+        'For best accuracy use Data → Sensors → Guided Calibration (2× each pose) instead.'
       );
       if (!ok) return;
     }
@@ -126,14 +128,24 @@ export default function StatusCard({ job, statusInfo }: StatusCardProps) {
           }
           {
             isCalibrationJob(job) && (
-              <Typography
-                variant="caption"
-                color="warning.main"
-                display="block"
-                sx={ { mt: 1 } }
-              >
-                Empty bed only: no one on this side while calibrating.
-              </Typography>
+              <>
+                <Typography
+                  variant="caption"
+                  color="warning.main"
+                  display="block"
+                  sx={ { mt: 1 } }
+                >
+                  Quick job: empty bed only. Prefer Guided Calibration for personalized thresholds.
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  sx={ { mt: 1 } }
+                  onClick={ () => navigate('/data/sensors') }
+                >
+                  Open Guided Calibration
+                </Button>
+              </>
             )
           }
           {

@@ -39,7 +39,10 @@ const SettingsList = () => {
         <ListItemIcon>
           <SensorsIcon/>
         </ListItemIcon>
-        <ListItemText primary="Sensors" secondary="Live cap + piezo"/>
+        <ListItemText
+          primary="Sensors"
+          secondary="Live view + Guided Calibration"
+        />
         <ArrowForwardIosIcon fontSize="small" sx={ { color: 'gray' } }/>
       </ListItem>
       <ListItem onClick={ () => navigate('/data/logs') }>

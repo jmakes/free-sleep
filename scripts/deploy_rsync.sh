@@ -130,21 +130,45 @@ done
 EOF
 
 echo ""
-echo "==> rsync code (excluding node_modules, .git, local data, logs)"
-# -a archive, -z compress, --delete removes remote files deleted locally in synced trees
-# We deliberately do NOT --delete at the top level to avoid wiping remote-only state.
-rsync -az --delete \
-  --exclude '.git/' \
-  --exclude 'node_modules/' \
-  --exclude 'app/node_modules/' \
-  --exclude 'server/node_modules/' \
-  --exclude 'app/dist/' \
-  --exclude 'server/free-sleep-data/' \
-  --exclude '.DS_Store' \
-  --exclude '*.log' \
-  -e "$RSYNC_SSH" \
-  "$ROOT_DIR/" \
-  "$TARGET:$REMOTE_PATH/"
+echo "==> Syncing code (excluding node_modules, .git, local data, logs)"
+# Prefer rsync when the Pod has it; many Yocto pods do not, so fall back to tar-over-ssh.
+REMOTE_HAS_RSYNC=0
+if ssh "${SSH_OPTS[@]}" "$TARGET" "command -v rsync >/dev/null 2>&1"; then
+  REMOTE_HAS_RSYNC=1
+fi
+
+if [ "$REMOTE_HAS_RSYNC" -eq 1 ]; then
+  echo "    method: rsync"
+  # -a archive, -z compress, --delete removes remote files deleted locally in synced trees
+  # We deliberately do NOT --delete at the top level to avoid wiping remote-only state.
+  rsync -az --delete \
+    --exclude '.git/' \
+    --exclude 'node_modules/' \
+    --exclude 'app/node_modules/' \
+    --exclude 'server/node_modules/' \
+    --exclude 'app/dist/' \
+    --exclude 'server/free-sleep-data/' \
+    --exclude '.DS_Store' \
+    --exclude '*.log' \
+    -e "$RSYNC_SSH" \
+    "$ROOT_DIR/" \
+    "$TARGET:$REMOTE_PATH/"
+else
+  echo "    method: tar-over-ssh (remote has no rsync)"
+  # Stream a tarball so we do not require rsync on the Pod.
+  # shellcheck disable=SC2086
+  tar -C "$ROOT_DIR" -czf - \
+    --exclude='.git' \
+    --exclude='node_modules' \
+    --exclude='app/node_modules' \
+    --exclude='server/node_modules' \
+    --exclude='app/dist' \
+    --exclude='server/free-sleep-data' \
+    --exclude='.DS_Store' \
+    --exclude='*.log' \
+    . \
+  | ssh "${SSH_OPTS[@]}" "$TARGET" "mkdir -p '$REMOTE_PATH' && tar -C '$REMOTE_PATH' -xzf -"
+fi
 
 echo ""
 echo "==> Fixing ownership and checking npm deps"

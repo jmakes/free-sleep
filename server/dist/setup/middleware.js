@@ -76,6 +76,7 @@ export default function (app) {
         '/api/gestures/recent',
         '/api/metrics/presence',
         '/api/sensors/live',
+        '/api/sensors/calibrate-pose',
         '/api/deviceStatus',
         '/api/services',
         '/api/serverStatus',

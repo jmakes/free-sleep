@@ -8,7 +8,9 @@
 
 ## Sleep Detection (`sleep_detection/`)
 
-- `calibrate_sensor_thresholds.py`: Establishes a baseline for capacitance sensors.
+- `calibrate_sensor_thresholds.py`: Empty-bed auto baseline (cap mean/std + rough piezo floor).
+- `calibrate_pose.py`: Guided Calibration (≥2× unoccupied/center/inner/outer; reps averaged) for personalized max-z + piezo floor.
+- `presence_config.py`: Shared defaults and per-side threshold loading used by analyze + Sensors UI.
 - `analyze_sleep.py`: Processes raw data and detects sleep intervals.
 - `cap_data.py`: Loads and processes capacitance sensor data to detect presence.
 - `sleep_detector.py`: Merges piezo and capacitance presence data to determine sleep sessions.
