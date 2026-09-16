@@ -5,17 +5,14 @@ import {
   FormControlLabel,
   Typography,
   Switch,
-  Divider,
 } from '@mui/material';
 import Section from '../Section.tsx';
 import { Services, useServices, postServices } from '@api/services.ts';
-import { useSettings } from '@api/settings.ts';
 import { useAppStore } from '@state/appStore.tsx';
 import { DeepPartial } from 'ts-essentials';
 
 export default function FeaturesSection() {
   const { data: services, refetch, isLoading } = useServices();
-  const { data: settings } = useSettings();
   const setIsUpdating = useAppStore(state => state.setIsUpdating);
   const isUpdating = useAppStore(state => state.isUpdating);
 
@@ -30,10 +27,7 @@ export default function FeaturesSection() {
       .finally(() => setIsUpdating(false));
   };
 
-  if (isLoading || !services || !settings) return <CircularProgress />;
-
-  const leftOn = Boolean(settings.left?.autoPresenceCalibration?.enabled);
-  const rightOn = Boolean(settings.right?.autoPresenceCalibration?.enabled);
+  if (isLoading || !services) return <CircularProgress />;
 
   return (
     <Section title='Features'>
@@ -73,15 +67,6 @@ export default function FeaturesSection() {
       />
       <Typography color='text.secondary'>
         Help improve stability by sending anonymous error reports to the free-sleep maintainers.
-      </Typography>
-
-      <Divider sx={ { my: 2 } }/>
-      <Typography variant="subtitle1" sx={ { fontWeight: 600 } }>
-        Beta
-      </Typography>
-      <Typography color='text.secondary' variant="body2">
-        Auto presence calibration and manual threshold edits are under Side settings
-        (left: { leftOn ? 'on' : 'off' }, right: { rightOn ? 'on' : 'off' }).
       </Typography>
     </Section>
   );
