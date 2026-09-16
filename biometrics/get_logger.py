@@ -12,7 +12,7 @@ import json
 import sentry_sdk
 
 
-LoggerName = Literal['sleep-analyzer', 'calibrate-sensor', 'free-sleep-stream']
+LoggerName = Literal['sleep-analyzer', 'calibrate-sensor', 'free-sleep-stream', 'auto-calibrate']
 LOGGER_NAMES: List[LoggerName] = list(get_args(LoggerName))
 
 

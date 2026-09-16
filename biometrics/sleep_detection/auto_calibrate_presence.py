@@ -6,7 +6,7 @@ Uses each side's power schedule as a soft prior for likely in-bed vs empty
 windows, fits empty/occupied distributions from RAW, and blends into
 `{side}_cap_baseline.json`.
 
-Disable via settings.beta.autoPresenceCalibration.enabled (Node job gates this).
+Gated per-side via settings[side].autoPresenceCalibration.enabled (Node job).
 Piezo floor is hard-clamped to ≥ MIN_PIEZO_FLOOR_AUTO to limit cross-talk.
 """
 from __future__ import annotations
