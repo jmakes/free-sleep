@@ -6,6 +6,7 @@ import semver from 'semver';
 export type ServerInfo = {
   version: string;
   branch: string;
+  commit?: string;
   updateAvailable: boolean;
   githubOwner?: string;
   githubRepo?: string;
@@ -15,6 +16,7 @@ export type ServerInfo = {
 type LatestVersion = {
   version: string;
   branch: string;
+  commit?: string;
   githubOwner?: string;
   githubRepo?: string;
   updateCheckUrl?: string;
@@ -28,18 +30,34 @@ export const getLatestVersion = async () => {
   return axios.get<LatestVersion>(url);
 };
 
+/** True when remote is newer by semver, or same/newer semver with a different stamped commit. */
+export function isRemoteNewer(remote: LatestVersion, local: { version: string; commit?: string }): boolean {
+  const remoteVer = remote.version;
+  const localVer = local.version;
+
+  if (semver.valid(remoteVer) && semver.valid(localVer)) {
+    if (semver.gt(remoteVer, localVer)) return true;
+    if (semver.lt(remoteVer, localVer)) return false;
+    // Same version — fall through to commit compare
+  } else if (remoteVer !== localVer) {
+    // Non-semver fallback: any string difference means "maybe update"
+    return true;
+  }
+
+  const remoteCommit = remote.commit?.trim();
+  const localCommit = local.commit?.trim();
+  if (remoteCommit && localCommit && remoteCommit !== localCommit) {
+    return true;
+  }
+  return false;
+}
+
 
 export const useServerInfo = () => useQuery<ServerInfo>({
   queryKey: ['useServerInfo'],
   queryFn: async () => {
     const response = await getLatestVersion();
-    let updateAvailable = false;
-    // Prefer semver so 2.1.5-jmakes.1 > 2.1.5-jmakes.0 works as expected.
-    if (semver.valid(response.data.version) && semver.valid(serverInfo.version)) {
-      updateAvailable = semver.gt(response.data.version, serverInfo.version);
-    } else {
-      updateAvailable = response.data.version !== serverInfo.version;
-    }
+    let updateAvailable = isRemoteNewer(response.data, serverInfo);
     if (import.meta.env.VITE_ENV === 'demo') {
       updateAvailable = true;
     }
@@ -49,4 +67,5 @@ export const useServerInfo = () => useQuery<ServerInfo>({
     };
   },
   staleTime: 60_000,
+  retry: 1,
 });

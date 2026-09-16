@@ -7,7 +7,20 @@ import UpdateFreeSleepButton from '../pages/SettingsPage/DeviceSettingsSection/U
 
 export default function VersionStatus() {
   const { data: serverInfo, isLoading, isError } = useServerInfo();
-  if (isError || isLoading) return null;
+  if (isLoading) return null;
+
+  if (isError) {
+    return (
+      <Alert severity="warning" sx={ { width: '100%' } }>
+        <AlertTitle>Could not check for updates</AlertTitle>
+        <Typography variant="body2">
+          Failed to reach GitHub for { currentServerInfo.updateCheckUrl || 'serverInfo.json' }.
+          Current build: { currentServerInfo.version }
+          { currentServerInfo.commit ? ` (${currentServerInfo.commit.slice(0, 7)})` : '' }.
+        </Typography>
+      </Alert>
+    );
+  }
 
   return (
     <>
@@ -19,10 +32,12 @@ export default function VersionStatus() {
                 Free-sleep update available!
               </AlertTitle>
               <Typography variant="body2">
-                Latest version: { serverInfo.version }
+                Latest: { serverInfo.version }
+                { serverInfo.commit ? ` (${serverInfo.commit.slice(0, 7)})` : '' }
               </Typography>
               <Typography variant="body2" sx={ { mb: 1 } }>
-                Current version: { currentServerInfo.version }
+                Current: { currentServerInfo.version }
+                { currentServerInfo.commit ? ` (${currentServerInfo.commit.slice(0, 7)})` : '' }
               </Typography>
               <UpdateFreeSleepButton/>
             </Alert>

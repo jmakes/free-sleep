@@ -150,6 +150,7 @@ def _accumulate_day(
     occ_caps: Dict[str, List[float]],
     empty_piezo: List[float],
     occ_piezo: List[float],
+    force_empty: bool = False,
 ) -> None:
     expected = int((day_end_utc - day_start_utc).total_seconds())
     if get_available_memory_mb() < 350:
@@ -202,14 +203,13 @@ def _accumulate_day(
     for ts, row in merged.iterrows():
         in_sched = _in_any_window(ts, schedule_windows_local, buffer)
         pr = float(row['_piezo_range'])
-        if not in_sched:
-            # Likely empty prior — only keep quiet piezo samples
+        # Away mode => almost certainly not in bed; never use schedule as occupied.
+        if force_empty or not in_sched:
             empty_piezo.append(pr)
             for col in zone_cols:
                 if col in row and np.isfinite(row[col]):
                     empty_caps[col.split('_')[-1]].append(float(row[col]))
         else:
-            # Likely in-bed prior — keep salient samples (motion or will filter later)
             occ_piezo.append(pr)
             for col in zone_cols:
                 if col in row and np.isfinite(row[col]):
@@ -250,8 +250,17 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
     except Exception:
         tz = timezone.utc
 
+    side_settings = (settings.get(side) or {})
+    away_mode = bool(side_settings.get('awayMode'))
     side_schedule = (schedules.get(side) or {})
     now_local = datetime.now(tz)
+
+    if away_mode:
+        logger.info(
+            f'{side} away mode ON — treating all samples as empty prior '
+            '(no occupied fit from schedule)'
+        )
+
     empty_caps: Dict[str, List[float]] = defaultdict(list)
     occ_caps: Dict[str, List[float]] = defaultdict(list)
     empty_piezo: List[float] = []
@@ -281,6 +290,7 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
             occ_caps,
             empty_piezo,
             occ_piezo,
+            force_empty=away_mode,
         )
         logger.info(
             f'{side} day={day_local.date()} empty_n={len(empty_piezo)} occ_n={len(occ_piezo)}'
@@ -289,6 +299,7 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
     report: Dict[str, Any] = {
         'side': side,
         'days': days,
+        'away_mode': away_mode,
         'empty_piezo_samples': len(empty_piezo),
         'occ_piezo_samples': len(occ_piezo),
         'zones': {},
@@ -314,13 +325,23 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
     report['salience_piezo'] = int(salience)
     report['salient_occ_piezo_samples'] = len(salient_occ_piezo)
 
+    empty_only = False
     if len(salient_occ_piezo) < AUTO_CAL_MIN_OCC_SAMPLES // 2:
-        report['ok'] = False
-        report['error'] = (
-            f'Not enough salient in-bed piezo samples ({len(salient_occ_piezo)}). '
-            'Schedule prior may not match real occupancy, or sensors too quiet.'
-        )
-        return report
+        if away_mode:
+            # Away: only refresh empty baseline; keep existing occupied thresholds.
+            empty_only = True
+            report['away_mode'] = True
+            report['note'] = (
+                'Away mode on — updating empty baseline only; '
+                'occupied thresholds left unchanged.'
+            )
+        else:
+            report['ok'] = False
+            report['error'] = (
+                f'Not enough salient in-bed piezo samples ({len(salient_occ_piezo)}). '
+                'Schedule prior may not match real occupancy, or sensors too quiet.'
+            )
+            return report
 
     existing = load_sensor_profile(side)
     cap_baseline: Dict[str, Dict[str, float]] = {}
@@ -378,31 +399,44 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
         report['error'] = 'No zones produced an empty baseline'
         return report
 
-    positive_seps = [v for z, v in separation_z.items() if v > 0.8 and z not in weak_zones]
-    if not positive_seps:
-        positive_seps = [v for v in separation_z.values() if v > 0.5]
-    if positive_seps:
-        weakest = min(positive_seps)
-        # Smaller swings → lower threshold (catch worn pads); clamp sane range
-        cap_zone_threshold = float(np.clip(weakest * 0.35, 1.0, 3.5))
-    else:
-        cap_zone_threshold = DEFAULT_CAP_ZONE_THRESHOLD
-
-    old_cap = existing.get('cap_zone_threshold')
-    cap_zone_threshold = _blend(float(old_cap) if old_cap is not None else None, cap_zone_threshold)
-
-    # Piezo floor: between empty p95 and salient occupied p50, clamped for cross-talk
-    empty_p95 = float(np.percentile(empty_piezo, 95))
-    occ_p50 = float(np.percentile(salient_occ_piezo, 50))
-    if occ_p50 > empty_p95 * 1.15:
-        mid = empty_p95 + (occ_p50 - empty_p95) * 0.40
-    else:
-        mid = max(empty_p95 * 2.5, empty_p95 + 20_000)
-    piezo_floor = int(np.clip(mid, MIN_PIEZO_FLOOR_AUTO, MAX_PIEZO_FLOOR_AUTO))
-    old_piezo = existing.get('piezo_range_threshold')
-    if old_piezo is not None:
-        piezo_floor = int(_blend(float(old_piezo), float(piezo_floor)))
+    if empty_only:
+        old_cap = existing.get('cap_zone_threshold')
+        cap_zone_threshold = float(
+            old_cap if old_cap is not None else DEFAULT_CAP_ZONE_THRESHOLD
+        )
+        old_piezo = existing.get('piezo_range_threshold')
+        piezo_floor = int(
+            old_piezo if old_piezo is not None else DEFAULT_PIEZO_RANGE_THRESHOLD
+        )
         piezo_floor = int(np.clip(piezo_floor, MIN_PIEZO_FLOOR_AUTO, MAX_PIEZO_FLOOR_AUTO))
+        empty_p95 = float(np.percentile(empty_piezo, 95)) if empty_piezo else 0
+        occ_p50 = 0
+    else:
+        positive_seps = [v for z, v in separation_z.items() if v > 0.8 and z not in weak_zones]
+        if not positive_seps:
+            positive_seps = [v for v in separation_z.values() if v > 0.5]
+        if positive_seps:
+            weakest = min(positive_seps)
+            # Smaller swings → lower threshold (catch worn pads); clamp sane range
+            cap_zone_threshold = float(np.clip(weakest * 0.35, 1.0, 3.5))
+        else:
+            cap_zone_threshold = DEFAULT_CAP_ZONE_THRESHOLD
+
+        old_cap = existing.get('cap_zone_threshold')
+        cap_zone_threshold = _blend(float(old_cap) if old_cap is not None else None, cap_zone_threshold)
+
+        # Piezo floor: between empty p95 and salient occupied p50, clamped for cross-talk
+        empty_p95 = float(np.percentile(empty_piezo, 95))
+        occ_p50 = float(np.percentile(salient_occ_piezo, 50)) if salient_occ_piezo else empty_p95
+        if occ_p50 > empty_p95 * 1.15:
+            mid = empty_p95 + (occ_p50 - empty_p95) * 0.40
+        else:
+            mid = max(empty_p95 * 2.5, empty_p95 + 20_000)
+        piezo_floor = int(np.clip(mid, MIN_PIEZO_FLOOR_AUTO, MAX_PIEZO_FLOOR_AUTO))
+        old_piezo = existing.get('piezo_range_threshold')
+        if old_piezo is not None:
+            piezo_floor = int(_blend(float(old_piezo), float(piezo_floor)))
+            piezo_floor = int(np.clip(piezo_floor, MIN_PIEZO_FLOOR_AUTO, MAX_PIEZO_FLOOR_AUTO))
 
     report['thresholds'] = {
         'cap_method': DEFAULT_CAP_METHOD,

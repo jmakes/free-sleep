@@ -111,7 +111,8 @@ export default function FeaturesSection() {
           Blends into existing thresholds so worn pads with smaller swings can still
           register occupancy. Piezo floor never drops below 50k (cross-talk).
           Turn this off if you often sleep with the Pod powered off — schedule priors
-          get noisy then. Manual guided calibration still wins when you run it.
+          get noisy then. Sides in Away mode use a strong empty prior (no occupied fit from schedule).
+          Manual guided calibration still wins when you run it.
         </Typography>
       </Box>
       <Button

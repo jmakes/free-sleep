@@ -23,7 +23,6 @@ export const executeAutoPresenceCalibration = async (
     logger.info(`Skipping auto presence cal (${side}): beta toggle off`);
     return;
   }
-
   const apply = options.apply !== false;
   const days = options.days ?? 14;
   const args = [

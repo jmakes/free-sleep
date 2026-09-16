@@ -37,8 +37,8 @@ export const scheduleAutoPresenceCalibration = (settingsData: Settings) => {
         return;
       }
       logger.info('Executing weekly auto presence calibration (left then right)');
+      // Away mode is handled in Python as a strong empty prior (no occupied fit).
       await executeAutoPresenceCalibration('left', { apply: true, days: 14 });
-      // Stagger right side 20 minutes via delayed call so RAW/memory can settle
       setTimeout(() => {
         void executeAutoPresenceCalibration('right', { apply: true, days: 14 });
       }, 20 * 60 * 1000);
