@@ -256,6 +256,11 @@ const createSettings = (): Settings => ({
     }
   },
   primePodDaily: { enabled: true, time: '14:30' },
+  beta: {
+    autoPresenceCalibration: {
+      enabled: false,
+    },
+  },
 });
 
 const createServices = (): Services => ({
@@ -306,6 +311,20 @@ const createServices = (): Services => ({
         status: 'healthy',
         message: 'Calibrated this morning',
         timestamp: new Date(now.getTime() - 3 * HOURS_TO_MS).toISOString(),
+      },
+      autoCalibrateLeft: {
+        name: 'Auto presence cal - Left',
+        description: 'Beta schedule-prior auto cal left',
+        status: 'not_started',
+        message: '',
+        timestamp: '',
+      },
+      autoCalibrateRight: {
+        name: 'Auto presence cal - Right',
+        description: 'Beta schedule-prior auto cal right',
+        status: 'not_started',
+        message: '',
+        timestamp: '',
       },
     },
   },

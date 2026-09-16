@@ -5,6 +5,8 @@ export const JobSchema = z.enum([
   'analyzeSleepRight',
   'biometricsCalibrationLeft',
   'biometricsCalibrationRight',
+  'autoPresenceCalibrationLeft',
+  'autoPresenceCalibrationRight',
   'reboot',
   'update',
 ]);

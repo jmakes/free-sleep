@@ -43,6 +43,16 @@ MAX_PRESENCE_GAP_MINUTES = 15
 # Count as a bed exit only when presence is gone this long (tosses/flicker are shorter).
 MIN_EXIT_GAP_SECONDS = 45
 
+# Schedule-prior auto presence calibration (beta)
+AUTO_CAL_LOOKBACK_DAYS = 14
+AUTO_CAL_BLEND = 0.35  # weight of new estimate vs existing profile
+AUTO_CAL_HISTORY_MAX = 4
+# Piezo floors must stay high enough to resist cross-talk from the other side
+MIN_PIEZO_FLOOR_AUTO = 50_000
+MAX_PIEZO_FLOOR_AUTO = 200_000
+AUTO_CAL_MIN_EMPTY_SAMPLES = 600  # ~10 min at 1 Hz
+AUTO_CAL_MIN_OCC_SAMPLES = 600
+
 BASELINE_VERSION = 2
 
 

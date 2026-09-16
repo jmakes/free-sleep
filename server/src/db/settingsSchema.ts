@@ -73,6 +73,14 @@ const SideSettingsSchema = z.object({
   })
 }).strict();
 
+/** Beta features — off by default; may change behavior aggressively. */
+const BetaSettingsSchema = z.object({
+  /** Schedule-prior auto presence calibration (worn-sensor friendly). */
+  autoPresenceCalibration: z.object({
+    enabled: z.boolean(),
+  }).strict(),
+}).strict();
+
 export const SettingsSchema = z.object({
   id: z.string(),
   timeZone: z.enum(TIME_ZONES),
@@ -84,6 +92,7 @@ export const SettingsSchema = z.object({
   }),
   temperatureFormat: Temperatures,
   rebootDaily: z.boolean(),
+  beta: BetaSettingsSchema,
 }).strict();
 
 export type SideSettings = z.infer<typeof SideSettingsSchema>;

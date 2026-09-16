@@ -14,6 +14,8 @@ export const ServicesSchema = z.object({
       stream: StatusInfoSchema,
       calibrateLeft: StatusInfoSchema,
       calibrateRight: StatusInfoSchema,
+      autoCalibrateLeft: StatusInfoSchema,
+      autoCalibrateRight: StatusInfoSchema,
     }),
   }),
   sentryLogging: z.object({

@@ -41,6 +41,7 @@ User data lives under **`/persistent/free-sleep-data/`** and is **not** wiped by
 | Sleep presence fusion | Done | Cap max-z (not sum); piezo-primary OR soft-assist; per-side piezo floor; analyze diagnostics |
 | Person-first UI shell (Left / Right / House) | TODO | Parked until sleep path is solid |
 | Off-box analysis APIs (#6) | TODO | Only if on-device resources are insufficient |
+| Auto presence calibration (beta) | Code on main | Settings → Features → Beta; weekly Wed 15:00; piezo floor ≥50k; off by default |
 
 ---
 

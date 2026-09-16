@@ -61,6 +61,11 @@ const defaultData: Settings = {
     enabled: false,
     time: '14:00',
   },
+  beta: {
+    autoPresenceCalibration: {
+      enabled: false,
+    },
+  },
 };
 
 /** Old shipped defaults we replace when migrating off singleTap / scheduleApply-quad */
@@ -127,6 +132,14 @@ for (const side of ['left', 'right'] as const) {
       defaultSideSettings.analyzeSleep.minDurationMinutes,
   };
 }
+
+
+// Ensure beta defaults for older settingsDB.json installs
+settingsDB.data.beta = {
+  autoPresenceCalibration: {
+    enabled: settingsDB.data.beta?.autoPresenceCalibration?.enabled ?? false,
+  },
+};
 
 await settingsDB.write();
 
