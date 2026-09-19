@@ -28,7 +28,7 @@ DEFAULT_CAP_ZONE_THRESHOLD = 2.0
 DEFAULT_CAP_ROLLING_SECONDS = 10
 DEFAULT_CAP_THRESHOLD_PERCENT = 0.90
 
-# Piezo: packet range (max−min) over a short window. Raised from 20k to reduce
+# Piezo: packet range (max-min) over a short window. Raised from 20k to reduce
 # cross-talk false positives when the other side is occupied.
 DEFAULT_PIEZO_RANGE_THRESHOLD = 50_000
 DEFAULT_PIEZO_ROLLING_SECONDS = 10
@@ -37,11 +37,13 @@ DEFAULT_PIEZO_THRESHOLD_PERCENT = 0.70
 # Fusion: piezo is primary; cap soft-assists (OR) rather than hard AND.
 DEFAULT_FUSION_MODE = 'piezo_primary'
 
-# Sleep period rules (unchanged intentional defaults).
+# Sleep period rules.
 MIN_SLEEP_HOURS = 3
 MAX_PRESENCE_GAP_MINUTES = 15
-# Count as a bed exit only when presence is gone this long (tosses/flicker are shorter).
-MIN_EXIT_GAP_SECONDS = 45
+# Meaningful bed exit: away long enough to be a real leave (bathroom / out of bed).
+# Brief gaps (tosses / flicker) are tracked separately and do not inflate exits.
+MIN_EXIT_GAP_SECONDS = 5 * 60  # 5 minutes
+BRIEF_EXIT_GAP_SECONDS = 45
 
 # Schedule-prior auto presence calibration (beta)
 AUTO_CAL_LOOKBACK_DAYS = 14
@@ -73,7 +75,7 @@ def load_sensor_profile(side: Side) -> Dict[str, Any]:
     Load empty-bed baseline (+ optional pose-derived thresholds / piezo floor).
 
     Always returns a dict with at least zone means/stds when the file exists.
-    Extra keys (piezo_range_threshold, cap_zone_threshold, poses, …) are optional.
+    Extra keys (piezo_range_threshold, cap_zone_threshold, poses, ...) are optional.
     """
     path = baseline_file_path(side)
     if not os.path.isfile(path):
@@ -150,7 +152,7 @@ def save_sensor_profile(side: Side, profile: Dict[str, Any]) -> str:
     profile.setdefault('cap_method', DEFAULT_CAP_METHOD)
     with open(path, 'w', encoding='utf-8') as handle:
         json.dump(profile, handle, indent=4)
-    logger.info(f'Saved sensor profile for {side} → {path}')
+    logger.info(f'Saved sensor profile for {side} -> {path}')
     return path
 
 
@@ -170,7 +172,7 @@ def thresholds_for_snapshot(side: Side) -> Dict[str, Any]:
             'description': (
                 f'Cap: {method} of per-zone z-scores vs empty baseline. '
                 f'Instant sample above {cap_thresh} counts toward occupancy; '
-                f'analysis needs ≥{int(DEFAULT_CAP_THRESHOLD_PERCENT * 100)}% of a '
+                f'analysis needs >={int(DEFAULT_CAP_THRESHOLD_PERCENT * 100)}% of a '
                 f'{DEFAULT_CAP_ROLLING_SECONDS}s window.'
             ),
         },
@@ -180,9 +182,9 @@ def thresholds_for_snapshot(side: Side) -> Dict[str, Any]:
             'thresholdPercent': DEFAULT_PIEZO_THRESHOLD_PERCENT,
             'personalized': personalized,
             'description': (
-                f'Piezo: packet range (max−min) ≥ {piezo_floor:,} counts as active'
+                f'Piezo: packet range (max-min) >= {piezo_floor:,} counts as active'
                 f'{" (personalized floor)" if personalized else " (default)"}; '
-                f'analysis needs ≥{int(DEFAULT_PIEZO_THRESHOLD_PERCENT * 100)}% of a '
+                f'analysis needs >={int(DEFAULT_PIEZO_THRESHOLD_PERCENT * 100)}% of a '
                 f'{DEFAULT_PIEZO_ROLLING_SECONDS}s window.'
             ),
         },

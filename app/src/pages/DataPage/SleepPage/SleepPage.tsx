@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import moment from 'moment-timezone';
 import BedIcon from '@mui/icons-material/Bed';
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
@@ -20,6 +20,9 @@ import { useTheme } from '@mui/material/styles';
 import { useVitalsRecords } from '@api/vitals.ts';
 import { useMovementRecords } from '@api/movement.ts';
 import MovementChart from '@components/MovementChart.tsx';
+import SleepStageChart from '@components/SleepStageChart.tsx';
+import SleepScoreCard from '@components/SleepScoreCard.tsx';
+import { computeSleepScoreV1 } from '@lib/sleepScoreV1.ts';
 import ErrorBoundary from '@components/ErrorBoundary.tsx';
 import { useSettings } from '@api/settings.ts';
 import { useServices } from '@api/services.ts';
@@ -83,6 +86,20 @@ export default function SleepPage() {
   selectedSleepRecord !== undefined
   );
 
+
+
+  const scoreResult = useMemo(() => {
+    if (!selectedSleepRecord) return null;
+    return computeSleepScoreV1({
+      sleepPeriodSeconds: selectedSleepRecord.sleep_period_seconds,
+      enteredBedAt: selectedSleepRecord.entered_bed_at,
+      leftBedAt: selectedSleepRecord.left_bed_at,
+      timesExitedBed: selectedSleepRecord.times_exited_bed,
+      notPresentIntervals: selectedSleepRecord.not_present_intervals,
+      vitals: vitalsRecords as any,
+      movement: movementRecords || [],
+    });
+  }, [selectedSleepRecord, vitalsRecords, movementRecords]);
 
   useEffect(() => {
     // Default to last record selected
@@ -183,6 +200,9 @@ export default function SleepPage() {
             (
               <>
                 <SleepRecordCard sleepRecord={ selectedSleepRecord } refetch={ refetch }/>
+                <ErrorBoundary componentName="Sleep score">
+                  <SleepScoreCard scoreResult={ scoreResult }/>
+                </ErrorBoundary>
                 <VitalsSummaryCard
                   startTime={ selectedSleepRecord.entered_bed_at }
                   endTime={ selectedSleepRecord.left_bed_at }
@@ -192,6 +212,9 @@ export default function SleepPage() {
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Movement chart">
                   <MovementChart movementRecords={ movementRecords || [] } label="Restlessness"/>
+                </ErrorBoundary>
+                <ErrorBoundary componentName="Sleep stage chart">
+                  <SleepStageChart summary={ scoreResult?.stageSummary }/>
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Breathing rate chart">
                   <VitalsLineChart vitalsRecords={ vitalsRecords } metric="breathing_rate"/>

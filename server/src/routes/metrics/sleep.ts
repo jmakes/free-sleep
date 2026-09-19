@@ -90,17 +90,22 @@ router.put<
     updatedRecord.left_bed_at = Math.floor(new Date(updatedRecord.left_bed_at).getTime() / 1000);
   }
 
-  // Need to recalculate the number of times someone left the bed during the new sleep interval
+  // Recalculate duration + meaningful exits (>=5 min away) for the edited window
   if (updatedRecord.entered_bed_at && updatedRecord.left_bed_at) {
     // @ts-expect-error
     updatedRecord.sleep_period_seconds = updatedRecord.left_bed_at - updatedRecord.entered_bed_at;
 
+    const MIN_EXIT_GAP_SECONDS = 5 * 60;
     // @ts-expect-error
     updatedRecord.times_exited_bed = existingRecord.not_present_intervals.filter(([start, end]) => {
       const startTime = Math.floor(new Date(start).getTime() / 1000);
       const endTime = Math.floor(new Date(end).getTime() / 1000);
+      const gapSeconds = endTime - startTime;
       // @ts-ignore
-      return startTime >= updatedRecord.entered_bed_at && endTime <= updatedRecord.left_bed_at;
+      return startTime >= updatedRecord.entered_bed_at
+        // @ts-ignore
+        && endTime <= updatedRecord.left_bed_at
+        && gapSeconds >= MIN_EXIT_GAP_SECONDS;
     }).length;
   }
 

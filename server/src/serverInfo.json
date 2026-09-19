@@ -1,8 +1,8 @@
 {
-  "version": "2.1.5-jmakes.7",
-  "branch": "main",
+  "version": "2.1.5-jmakes.8",
+  "branch": "feat/sleep-stage-score-v1",
   "githubOwner": "jmakes",
   "githubRepo": "free-sleep",
   "updateCheckUrl": "https://raw.githubusercontent.com/jmakes/free-sleep/main/server/src/serverInfo.json",
-  "commit": "5f1326bb9fb172736dc02c0d4956a271199e432d"
+  "commit": "545deb3f56ed25abf30309279985eecca653dedd"
 }
