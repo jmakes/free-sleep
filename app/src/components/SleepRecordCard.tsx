@@ -24,6 +24,7 @@ import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PersonIcon from '@mui/icons-material/Person';
 import { useSettings } from '@api/settings.ts';
+import { displayExitCount } from '@lib/bedExits.ts';
 
 
 // Helper to format time
@@ -88,6 +89,12 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
   const sleepNight = formatSleepNight(sleepRecord.entered_bed_at);
   const enteredLabel = formatDateTimeLabel(sleepRecord.entered_bed_at);
   const leftLabel = formatDateTimeLabel(sleepRecord.left_bed_at);
+
+  const exits = displayExitCount(sleepRecord);
+  const exitValue = exits.briefGaps > 0
+    ? `${exits.meaningfulExits} ${exits.meaningfulExits === 1 ? 'time' : 'times'} (≥5m)`
+      + ` · ${exits.briefGaps} brief`
+    : `${exits.meaningfulExits} ${exits.meaningfulExits === 1 ? 'time' : 'times'} (≥5m away)`;
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this sleep record?')) {
@@ -161,7 +168,7 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
           {
             label: 'Times exited bed',
             icon: <TransferWithinAStationIcon fontSize="small" />,
-            value: `${sleepRecord.times_exited_bed} ${sleepRecord.times_exited_bed === 1 ? 'time' : 'times'} (≥45s away)`,
+            value: exitValue,
           },
         ].map(({ label, value, icon }) => (
           <Box key={ label } display="flex" justifyContent="space-between" alignItems="center">
@@ -169,7 +176,7 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
               { icon && <Box display="flex" alignItems="center">{ icon }</Box> }
               <Typography sx={ { fontWeight: 'bold' } }>{ label }</Typography>
             </Box>
-            <Typography>{ value }</Typography>
+            <Typography sx={ { textAlign: 'right', maxWidth: '55%' } }>{ value }</Typography>
           </Box>
         )) }
       </Box>
