@@ -12,6 +12,15 @@ export const MIN_MEANINGFUL_EXIT_SECONDS = 5 * 60;
 
 export type IntervalPair = [string | number | Date, string | number | Date];
 
+export type GapKind = 'flicker' | 'brief' | 'meaningful';
+
+export type ClassifiedGap = {
+  startMs: number;
+  endMs: number;
+  seconds: number;
+  kind: GapKind;
+};
+
 export type BedExitCounts = {
   /** Gaps ≥ minMeaningfulSeconds (default 5 min) */
   meaningfulExits: number;
@@ -34,11 +43,22 @@ export function gapSeconds(start: string | number | Date, end: string | number |
   return Math.max(0, Math.floor(ms / 1000));
 }
 
+export function classifyGapSeconds(
+  seconds: number,
+  options?: { minMeaningfulSeconds?: number; briefGapSeconds?: number },
+): GapKind {
+  const minMeaningful = options?.minMeaningfulSeconds ?? MIN_MEANINGFUL_EXIT_SECONDS;
+  const briefFloor = options?.briefGapSeconds ?? BRIEF_GAP_SECONDS;
+  if (seconds >= minMeaningful) return 'meaningful';
+  if (seconds >= briefFloor) return 'brief';
+  return 'flicker';
+}
+
 /**
- * Count exits from not_present_intervals inside a sleep night.
- * Intervals that do not overlap [enteredBedAt, leftBedAt] are ignored when bounds given.
+ * Classify each not_present interval that overlaps the night window.
+ * Shared by exit counts and PresenceTimelineChart so thresholds stay single-sourced.
  */
-export function countBedExits(
+export function classifyNotPresentIntervals(
   notPresentIntervals: IntervalPair[] | undefined | null,
   options?: {
     minMeaningfulSeconds?: number;
@@ -46,15 +66,12 @@ export function countBedExits(
     enteredBedAt?: string | number | Date;
     leftBedAt?: string | number | Date;
   },
-): BedExitCounts {
+): ClassifiedGap[] {
   const minMeaningful = options?.minMeaningfulSeconds ?? MIN_MEANINGFUL_EXIT_SECONDS;
   const briefFloor = options?.briefGapSeconds ?? BRIEF_GAP_SECONDS;
   const nightStart = options?.enteredBedAt !== undefined ? toMs(options.enteredBedAt) : null;
   const nightEnd = options?.leftBedAt !== undefined ? toMs(options.leftBedAt) : null;
-
-  let meaningfulExits = 0;
-  let briefGaps = 0;
-  let flickerGaps = 0;
+  const out: ClassifiedGap[] = [];
 
   for (const pair of notPresentIntervals || []) {
     if (!pair || pair.length < 2) continue;
@@ -68,11 +85,42 @@ export function countBedExits(
     }
 
     const seconds = Math.floor((endMs - startMs) / 1000);
-    if (seconds >= minMeaningful) meaningfulExits += 1;
-    else if (seconds >= briefFloor) briefGaps += 1;
-    else flickerGaps += 1;
+    out.push({
+      startMs,
+      endMs,
+      seconds,
+      kind: classifyGapSeconds(seconds, {
+        minMeaningfulSeconds: minMeaningful,
+        briefGapSeconds: briefFloor,
+      }),
+    });
   }
 
+  return out;
+}
+
+/**
+ * Count exits from not_present_intervals inside a sleep night.
+ * Intervals that do not overlap [enteredBedAt, leftBedAt] are ignored when bounds given.
+ */
+export function countBedExits(
+  notPresentIntervals: IntervalPair[] | undefined | null,
+  options?: {
+    minMeaningfulSeconds?: number;
+    briefGapSeconds?: number;
+    enteredBedAt?: string | number | Date;
+    leftBedAt?: string | number | Date;
+  },
+): BedExitCounts {
+  const gaps = classifyNotPresentIntervals(notPresentIntervals, options);
+  let meaningfulExits = 0;
+  let briefGaps = 0;
+  let flickerGaps = 0;
+  for (const gap of gaps) {
+    if (gap.kind === 'meaningful') meaningfulExits += 1;
+    else if (gap.kind === 'brief') briefGaps += 1;
+    else flickerGaps += 1;
+  }
   return { meaningfulExits, briefGaps, flickerGaps };
 }
 
