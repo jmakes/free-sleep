@@ -19,7 +19,7 @@ Movement must **never** be labeled REM / Light / Awake. Quiet stretches can be d
 |------|-----------|----------|
 | Meaningful exit | ≥ **5 minutes** away (or dual-sensor empty for that long) | “Times exited bed” |
 | Brief gap | 45s – 5m | “Brief gaps” (optional) |
-| Flicker | < 45s | Ignored |
+| Flicker | &lt; 45s | Ignored |
 
 Presence fusion is piezo-primary OR cap soft-assist: empty only when **both** miss, so a long empty gap is already a dual-sensor miss. This replaces the old 45s exit rule that produced “22 exits” nights.
 
@@ -30,19 +30,30 @@ New analyzes write `times_exited_bed` with the 5-minute rule. The UI also **reco
 Signals per epoch (within the sleep night):
 
 1. **Presence** — overlap with a not-present gap ≥ 45s → **Awake**
-2. **Movement** — same bins as the restlessness chart (quiet < 200, stirring 200–900, restless ≥ 900 on `total_movement`)
-3. **Vitals** — HR / HRV / breathing vs **night median**
+2. **Movement** — same bins as the restlessness chart (quiet &lt; 200, stirring 200–900, restless ≥ 900 on `total_movement`)
+3. **Vitals** — HR / breathing vs **sleep baseline** (quiet-movement epochs); HRV vs night median
 
-Classification priority:
+### Sleep baseline HR / BR
 
-1. Presence gap → Awake  
-2. Restless + elevated HR (or no HR) → Awake (arousal)  
-3. Quiet + HR ≤ night median + breathing ≤ ~median + HRV not elevated → **Deep**  
-4. Quiet/stirring + HR ≥ 105% median + HRV ≥ 108% median → **REM**  
-5. Else → **Light**  
-6. Without vitals: restless → Awake, else Light (no fake Deep/REM)
+- Prefer **median HR (and BR) of quiet-movement epochs** (`movementMax` &lt; 200), not the whole-night median (which includes wake and inflates the bar for “elevated”).
+- If fewer than **6** quiet epochs with vitals: fall back to the **30th percentile** of all epoch HR (or BR) means.
 
-**Smoothing:** Deep / REM runs shorter than **10 minutes** (2 epochs) demote to Light.
+### Awake rules (priority)
+
+1. Presence gap → Awake (`presence_gap`)
+2. **Sleep onset / latency:** from bed entry, epochs stay **Awake** (`sleep_onset`) until **3 consecutive** (~15 min) asleep-like epochs — quiet or mild stirring **and** HR ≤ baseline × **1.03** (or quiet-only if no vitals)
+3. Restless movement → Awake (`arousal`), including no-vitals nights
+4. Quiet + HR ≥ baseline × **1.10** → Awake (`elevated_hr_quiet`) — restless-mind / quiet-body wake
+5. Stirring + HR ≥ baseline × **1.05** → Awake (`elevated_hr_stirring`)
+6. Quiet + HR ≤ baseline + breathing ≤ ~baseline + HRV not elevated → **Deep**
+7. Quiet/stirring + HR ≥ 105% baseline + HRV ≥ 108% median → **REM**
+8. Else → **Light**
+9. Without vitals: restless → Awake, else Light (no fake Deep/REM)
+
+**Smoothing:**
+
+- Deep / REM runs shorter than **10 minutes** (2 epochs) demote to Light.
+- Isolated **single** elevated-HR Awake epochs sandwiched in sleep demote to Light (`smoothed_isolated_awake`); runs of **≥2** elevated-HR Awake epochs are kept (sustained mid-night wake).
 
 Implementations:
 
@@ -60,6 +71,8 @@ Implementations:
 
 UI: `app/src/lib/sleepScoreV1.ts` + `SleepScoreCard`. Python: `biometrics/sleep_detection/sleep_score_v1.py`.
 
+More awake % lowers restfulness naturally — that is intended when onset latency and quiet elevated-HR wake are real.
+
 ### How to verify (left vs Garmin)
 
 1. Open Sleep → select **Left** (Hsiaolin).  
@@ -68,6 +81,8 @@ UI: `app/src/lib/sleepScoreV1.ts` + `SleepScoreCard`. Python: `biometrics/sleep_
 4. Note Free Sleep score + component breakdown for that night.  
 5. Compare later to Garmin sleep score for the same night (directionally, not exact).  
 6. Re-run Analyze on left after deploy to refresh `times_exited_bed` in SQLite (optional; UI already recomputes).
+
+Right-side check (Jake): long latency before ~11pm local should show Awake; mid-night ~1h elevated-HR stretch should stay Awake (not Light).
 
 ## Non-goals / blockers
 
