@@ -21,6 +21,7 @@ import { useVitalsRecords } from '@api/vitals.ts';
 import { useMovementRecords } from '@api/movement.ts';
 import MovementChart from '@components/MovementChart.tsx';
 import SleepStageChart from '@components/SleepStageChart.tsx';
+import PresenceTimelineChart from '@components/PresenceTimelineChart.tsx';
 import SleepScoreCard from '@components/SleepScoreCard.tsx';
 import { computeSleepScoreV1 } from '@lib/sleepScoreV1.ts';
 import ErrorBoundary from '@components/ErrorBoundary.tsx';
@@ -203,6 +204,16 @@ export default function SleepPage() {
                 <ErrorBoundary componentName="Sleep score">
                   <SleepScoreCard scoreResult={ scoreResult }/>
                 </ErrorBoundary>
+                <ErrorBoundary componentName="Presence timeline">
+                  <PresenceTimelineChart
+                    enteredBedAt={ selectedSleepRecord.entered_bed_at }
+                    leftBedAt={ selectedSleepRecord.left_bed_at }
+                    notPresentIntervals={ selectedSleepRecord.not_present_intervals }
+                  />
+                </ErrorBoundary>
+                <ErrorBoundary componentName="Sleep stage chart">
+                  <SleepStageChart summary={ scoreResult?.stageSummary }/>
+                </ErrorBoundary>
                 <VitalsSummaryCard
                   startTime={ selectedSleepRecord.entered_bed_at }
                   endTime={ selectedSleepRecord.left_bed_at }
@@ -212,9 +223,6 @@ export default function SleepPage() {
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Movement chart">
                   <MovementChart movementRecords={ movementRecords || [] } label="Restlessness"/>
-                </ErrorBoundary>
-                <ErrorBoundary componentName="Sleep stage chart">
-                  <SleepStageChart summary={ scoreResult?.stageSummary }/>
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Breathing rate chart">
                   <VitalsLineChart vitalsRecords={ vitalsRecords } metric="breathing_rate"/>
