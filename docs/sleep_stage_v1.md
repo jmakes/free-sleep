@@ -35,13 +35,14 @@ Signals per epoch (within the sleep night):
 
 ### Sleep baseline HR / BR
 
-- Prefer **median HR (and BR) of quiet-movement epochs** (`movementMax` &lt; 200), not the whole-night median (which includes wake and inflates the bar for “elevated”).
-- If fewer than **6** quiet epochs with vitals: fall back to the **30th percentile** of all epoch HR (or BR) means.
+- Prefer the **30th percentile of HR (and BR) of quiet-movement epochs** (`movementMax` < 200), not the median and not the whole-night median (morning quiet-wake and mid-night wake inflate both).
+- Exclude the **last ~75 minutes** of the night from the quiet-baseline pool (morning in-bed wake).
+- If fewer than **6** quiet epochs with vitals after that filter: fall back to the **30th percentile** of all epoch HR (or BR) means.
 
 ### Awake rules (priority)
 
 1. Presence gap → Awake (`presence_gap`)
-2. **Sleep onset / latency:** from bed entry, epochs stay **Awake** (`sleep_onset`) until **3 consecutive** (~15 min) asleep-like epochs — quiet or mild stirring **and** HR ≤ baseline × **1.03** (or quiet-only if no vitals)
+2. **Sleep onset / latency:** from bed entry, epochs stay **Awake** (`sleep_onset`) until **3 consecutive** (~15 min) asleep-like epochs — **quiet** movement (`movementMax` < 200) **and** HR ≤ baseline × **1.03** (or quiet-only if no vitals). Stirring does **not** end onset.
 3. Restless movement → Awake (`arousal`), including no-vitals nights
 4. Quiet + HR ≥ baseline × **1.10** → Awake (`elevated_hr_quiet`) — restless-mind / quiet-body wake
 5. Stirring + HR ≥ baseline × **1.05** → Awake (`elevated_hr_stirring`)
