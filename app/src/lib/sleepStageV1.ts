@@ -1,6 +1,7 @@
 /**
- * stage_v1 awake (jmakes.12): adaptive lower-half-median baseline (bed+90m .. end-75m);
- * mild-stillness onset (<500, HR<=baseline*1.08); elevated awake quiet*1.15 / stirring*1.10.
+ * stage_v1 awake (jmakes.13): adaptive lower-half-median baseline (bed+90m .. end-75m);
+ * mild-stillness onset (<500, HR<=baseline*1.08); brief presence flicker does not
+ * reset onset when movement+HR look asleep; elevated awake quiet*1.15 / stirring*1.10.
  * Compact mirror of biometrics/sleep_detection/stage_v1.py (awake rules).
  * No person-specific hardcoded HR bpm values — ratios vs adaptive baseline only.
  */
@@ -152,9 +153,14 @@ export function computeStageV1(args: {
   const medHrv = median(vitals.map((v) => v.hrv).filter((v) => v > 0));
 
   const asleepLike = (f: F): boolean => {
-    if (f.isAbsent) return false;
+    // Presence gaps still classify as awake; brief flicker must not reset onset
+    // when movement+HR already look asleep. Absent without vitals does not count.
     if (f.movementMax >= RESTLESS) return false;
     if (f.movementMax >= ONSET_STILL) return false;
+    if (f.isAbsent) {
+      if (!f.hasVitals || baseHr <= 0) return false;
+      return f.hr > 0 && f.hr <= baseHr * HR_NEAR;
+    }
     if (!f.hasVitals || baseHr <= 0) return true;
     return f.hr > 0 && f.hr <= baseHr * HR_NEAR;
   };

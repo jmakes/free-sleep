@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Validate stage_v1 (jmakes.12) against Pod sleep nights.
+"""Validate stage_v1 (jmakes.13) against Pod sleep nights.
 
 Usage:
   python3 scripts/validate_stage_v1_nights.py --pod 192.168.86.33:3000 --nights 162,163
 
 Prints baseline HR, onset end (local), awake%, and hourly stage counts.
+Passes tz-aware ISO bed/vitals strings through to stage_v1 (UTC-normalized inside).
 Does not deploy. No hardcoded person-specific HR bpm values.
 """
 from __future__ import annotations
@@ -45,10 +46,6 @@ def parse_dt(value):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
-
-
-def to_naive_utc(dt: datetime) -> datetime:
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def fetch_series(base: str, path: str, side: str, start: datetime, end: datetime):
@@ -122,9 +119,11 @@ def summarize_night(base: str, night_id: int, side: str | None = None):
             'total_movement': row.get('total_movement') or row.get('totalMovement') or row.get('movement') or 0,
         })
 
+    # Pass tz-aware ISO (or ms) through; stage_v1._to_dt converts to naive UTC.
+    # Do NOT pre-convert bed to naive UTC while leaving vitals as local-offset ISO.
     result = compute_stage_v1(
-        to_naive_utc(entered),
-        to_naive_utc(left),
+        entered.isoformat(),
+        left.isoformat(),
         vit_norm,
         mov_norm,
         [(g[0], g[1]) for g in gaps],
@@ -159,7 +158,7 @@ def main():
     args = ap.parse_args()
     base = args.pod if args.pod.startswith('http') else f'http://{args.pod}'
     nights = [int(x.strip()) for x in args.nights.split(',') if x.strip()]
-    print(f'Pod {base}  nights={nights}  stage_v1 jmakes.12 adaptive baseline')
+    print(f'Pod {base}  nights={nights}  stage_v1 jmakes.13 adaptive baseline + onset flicker')
     for nid in nights:
         summarize_night(base, nid, args.side)
 

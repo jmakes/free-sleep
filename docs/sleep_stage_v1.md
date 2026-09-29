@@ -33,7 +33,7 @@ Signals per epoch (within the sleep night):
 2. **Movement** — same bins as the restlessness chart (quiet &lt; 200, stirring 200–900, restless ≥ 900 on `total_movement`)
 3. **Vitals** — HR / breathing vs **adaptive sleep baseline**; HRV vs night median
 
-### Sleep baseline HR / BR (jmakes.12 — adaptive, no hardcoded bpm)
+### Sleep baseline HR / BR (jmakes.13 — adaptive, no hardcoded bpm)
 
 - Window: epochs from **bed + 90 minutes** through **nightEnd − 75 minutes** (skip onset + morning tails).
 - Take **all** epoch mean HRs in that window (**any** movement).
@@ -42,6 +42,11 @@ Signals per epoch (within the sleep night):
 - Same construction for breathing rate when used.
 - Deep / REM heuristics continue to compare against this adaptive baseline (e.g. `hrLow ≤ baseline`).
 
+### Timestamp handling (Python)
+
+- `_to_dt` converts tz-aware ISO (and `Z`) to **naive UTC** via `astimezone`, never `replace(tzinfo=None)` alone.
+- Validators must pass bed times and vitals with consistent offsets (or ms); do not mix naive-UTC bed with stripped-local vitals.
+
 ### Awake rules (priority)
 
 1. Presence gap → Awake (`presence_gap`)
@@ -49,6 +54,7 @@ Signals per epoch (within the sleep night):
    - not restless (`movementMax` &lt; 900)
    - mild stillness (`movementMax` &lt; **500** — stirring OK, thrashing not)
    - HR ≤ baseline × **1.08** when vitals exist (or stillness-only if no vitals)
+   - brief presence flicker overlapping an otherwise asleep-like epoch **does not reset** the streak (still classifies as `presence_gap`); absent without vitals does not count
 3. Restless movement → Awake (`arousal`), including no-vitals nights
 4. Quiet + HR ≥ baseline × **1.15** → Awake (`elevated_hr_quiet`) — restless-mind / quiet-body wake
 5. Stirring + HR ≥ baseline × **1.10** → Awake (`elevated_hr_stirring`)
@@ -89,7 +95,7 @@ More awake % lowers restfulness naturally — that is intended when onset latenc
 5. Compare later to Garmin sleep score for the same night (directionally, not exact).  
 6. Re-run Analyze on left after deploy to refresh `times_exited_bed` in SQLite (optional; UI already recomputes).
 
-Right-side check (Jake): long latency before ~11pm local should show Awake; mid-night elevated-HR stretch should stay Awake (not Light). Expected ballpark after jmakes.12: night 162 right awake ~50–60% (not ~14% and not ~83%).
+Right-side check (Jake): long latency before ~11pm local should show Awake; mid-night elevated-HR stretch should stay Awake (not Light). Expected ballpark after jmakes.13: night 162 right awake ~50–60%, onset ≈23:00 local (not ~14%/0% and not ~83%; not onset dragged to ~2am).
 
 ## Non-goals / blockers
 

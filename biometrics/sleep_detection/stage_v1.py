@@ -5,15 +5,17 @@ Mirrors app/src/lib/sleepStageV1.ts. See docs/sleep_stage_v1.md.
 Intended for offline analysis / future DB enrichment; the Sleep UI currently
 computes the same rules client-side from vitals + movement + presence gaps.
 
-Awake pass (jmakes.12): adaptive lower-half-median baseline from mid-night
+Awake pass (jmakes.13): adaptive lower-half-median baseline from mid-night
 window (bed+90m .. end-75m, any movement); asleep-like = mild stillness
-(movementMax LT 500) + HR LT= baseline * 1.08; elevated awake quiet*1.15 /
-stirring*1.10. No person-specific hardcoded HR bpm values.
+(movementMax LT 500) + HR LT= baseline * 1.08; brief presence flicker does
+not reset onset when movement+HR already look asleep; elevated awake
+quiet*1.15 / stirring*1.10. Timestamps: tz-aware ISO converts to naive UTC
+(never strip offsets). No person-specific hardcoded HR bpm values.
 """
 from __future__ import annotations
 from operator import ge, gt, le, lt
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from statistics import median
 from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 Stage = Literal['awake', 'light', 'deep', 'rem']
@@ -40,14 +42,20 @@ class StageEpoch:
     reasons: List[str] = field(default_factory=list)
 
 def _to_dt(value: Any):
+    """Normalize to naive UTC. Aware offsets are converted, never stripped."""
     if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
         return value
     if isinstance(value, (int, float)):
         ts = float(value)
         if lt(ts, 1000000000000.0):
             ts *= 1000
         return datetime.utcfromtimestamp(ts / 1000.0)
-    return datetime.fromisoformat(str(value).replace('Z', '+00:00')).replace(tzinfo=None)
+    dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 def _lower_half_median(values: Sequence[float]):
     if not values:
@@ -94,12 +102,19 @@ def _sleep_baseline(features: Sequence[Dict[str, Any]], key: str, night_start: O
     return _lower_half_median(all_vals)
 
 def _is_asleep_like(movement_max: float, hr: float, has_vitals: bool, is_absent: bool, baseline_hr: float):
-    if is_absent:
-        return False
+    """Onset streak helper. Presence gaps still classify as awake separately.
+
+    Brief presence flicker must not reset the onset streak when movement + HR
+    already look asleep. Long empty without vitals does not count as asleep.
+    """
     if ge(movement_max, MOVEMENT_RESTLESS):
         return False
     if ge(movement_max, MOVEMENT_ONSET_STILL):
         return False
+    if is_absent:
+        if not has_vitals or le(baseline_hr, 0):
+            return False
+        return gt(hr, 0) and le(hr, baseline_hr * HR_NEAR_SLEEP)
     if not has_vitals or le(baseline_hr, 0):
         return True
     return gt(hr, 0) and le(hr, baseline_hr * HR_NEAR_SLEEP)
@@ -252,4 +267,4 @@ def compute_stage_v1(entered_bed_at: Any, left_bed_at: Any, vitals: Optional[Ite
         minutes[epoch.stage] += (epoch.end - epoch.start).total_seconds() / 60.0
     total = sum(minutes.values()) or 1.0
     percent = {k: int(round(v / total * 100)) for k, v in minutes.items()}
-    return {'version': 'stage_v1', 'epochs': [{'start': e.start.isoformat(), 'end': e.end.isoformat(), 'stage': e.stage, 'reasons': e.reasons} for e in epochs], 'minutes': minutes, 'percent': percent, 'baseline_hr': baseline_hr, 'baseline_br': baseline_br, 'onset_end_index': onset_end}
+    return {'version': 'stage_v1', 'epochs': [{'start': e.start.isoformat() + 'Z', 'end': e.end.isoformat() + 'Z', 'stage': e.stage, 'reasons': e.reasons} for e in epochs], 'minutes': minutes, 'percent': percent, 'baseline_hr': baseline_hr, 'baseline_br': baseline_br, 'onset_end_index': onset_end}
