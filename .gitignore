@@ -26,3 +26,6 @@ app/dist/
 # MSW is demo-only; do not ship worker to the Pod
 app/public/mockServiceWorker.js
 server/public/mockServiceWorker.js
+
+__pycache__/
+*.py[cod]
