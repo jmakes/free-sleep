@@ -100,5 +100,8 @@ Right-side check (Jake): long latency before ~11pm local should show Awake; mid-
 ## Non-goals / blockers
 
 - Right-side staging can wait until cal is trustworthy.  
-- No Pod deploy from this change set unless explicitly requested.  
 - Score is not yet calibrated to Garmin — treat as explainable v1 only.
+
+## Version notes
+
+- **2.1.5-jmakes.13** — timezone-safe `_to_dt` + sleep-onset flicker fix; approved for Pod staging deploy. Adaptive lower-half baseline and mild onset (movementMax &lt; 500, HR ≤ baseline × 1.08) from jmakes.12 retained.
