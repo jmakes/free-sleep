@@ -50,7 +50,7 @@ Mirrors movement:
 1. **SQLite** `snore (side, timestamp, snore, likelihood)` at 1-minute resolution during presence; retention ~30 d (`FREE_SLEEP_SNORE_RETENTION_DAYS`).
 2. **Night total** `sleep_records.snore_minutes` (nullable Int) — heuristic count of snore-labeled minutes.
 3. **Compute** from `analyze_sleep` after presence/movement, streaming `.RAW` (does not alter live vitals/presence).
-4. **API** `GET /api/metrics/snore?side=&startTime=&endTime=` — each row includes `heuristic: true`. Sleep records expose optional `snore_minutes`.
+4. **API** `GET /api/metrics/snore?side=&startTime=&endTime=` — each row includes `heuristic: true`. Sleep records expose optional `snore_minutes` (documented in `server/API.md` for Longevity / Doctor Longevity).
 
 ## Sleep-page UI (chunk 2)
 

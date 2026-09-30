@@ -423,3 +423,58 @@ def update_sleep_record_snore_minutes(
         cursor.close()
     except Exception as error:
         logger.error(f"Failed to update sleep_records.snore_minutes: {error}")
+
+
+def ensure_sleep_score_schema():
+    """
+    Add sleep_records.sleep_score_v1 + sleep_score_v1_json if missing.
+
+    Safe before first analyze persist (Pod may run ahead of prisma migrate).
+    """
+    cursor = conn.cursor()
+    try:
+        cols = {row[1] for row in cursor.execute("PRAGMA table_info(sleep_records)").fetchall()}
+        if "sleep_score_v1" not in cols:
+            cursor.execute("ALTER TABLE sleep_records ADD COLUMN sleep_score_v1 INTEGER;")
+            logger.info("Added sleep_records.sleep_score_v1 column")
+        if "sleep_score_v1_json" not in cols:
+            cursor.execute("ALTER TABLE sleep_records ADD COLUMN sleep_score_v1_json TEXT;")
+            logger.info("Added sleep_records.sleep_score_v1_json column")
+    finally:
+        cursor.close()
+
+
+def update_sleep_record_score(
+    sleep_id,
+    score: int,
+    components_json: str,
+    *,
+    side: str = None,
+    entered_bed_at: int = None,
+):
+    """Persist night-level sleep_score_v1 (0-100) + component JSON on sleep_records."""
+    try:
+        ensure_sleep_score_schema()
+        cursor = conn.cursor()
+        if sleep_id is not None:
+            cursor.execute(
+                "UPDATE sleep_records SET sleep_score_v1 = ?, sleep_score_v1_json = ? WHERE id = ?",
+                (int(score), components_json, int(sleep_id)),
+            )
+        elif side is not None and entered_bed_at is not None:
+            cursor.execute(
+                "UPDATE sleep_records SET sleep_score_v1 = ?, sleep_score_v1_json = ? "
+                "WHERE side = ? AND entered_bed_at = ?",
+                (int(score), components_json, side, int(entered_bed_at)),
+            )
+        else:
+            logger.warning("update_sleep_record_score: no id or side/entered_bed_at")
+            cursor.close()
+            return
+        logger.debug(
+            f"Updated sleep_records.sleep_score_v1={score} "
+            f"(id={sleep_id}, side={side}, entered={entered_bed_at})"
+        )
+        cursor.close()
+    except Exception as error:
+        logger.error(f"Failed to update sleep_records.sleep_score_v1: {error}")

@@ -21,6 +21,16 @@ export interface SleepRecord {
   not_present_intervals: [string, string][];
   /** Heuristic piezo snore minute total (nullable until scored). */
   snore_minutes?: number | null;
+  /** sleep_score_v1 0-100 (nullable until scored). */
+  sleep_score_v1?: number | null;
+  /** Optional component breakdown (enriched on read / from sleep_score_v1_json). */
+  sleep_score_v1_components?: Array<{
+    key: 'duration' | 'continuity' | 'restfulness' | 'vitals';
+    label: string;
+    points: number;
+    maxPoints: number;
+    detail: string;
+  }>;
 }
 
 export interface MovementRecord {

@@ -12,11 +12,13 @@ import logger from '../logger.js';
 export const RETENTION = {
     vitalsDays: Number(process.env.FREE_SLEEP_VITALS_RETENTION_DAYS ?? 30),
     movementDays: Number(process.env.FREE_SLEEP_MOVEMENT_RETENTION_DAYS ?? 30),
+    snoreDays: Number(process.env.FREE_SLEEP_SNORE_RETENTION_DAYS ?? 30),
     sleepDays: Number(process.env.FREE_SLEEP_SLEEP_RETENTION_DAYS ?? 180),
     /** When free space is below this (MB), prune more aggressively */
     lowDiskMb: Number(process.env.FREE_SLEEP_LOW_DISK_MB ?? 150),
     lowDiskVitalsDays: Number(process.env.FREE_SLEEP_LOW_DISK_VITALS_DAYS ?? 14),
     lowDiskMovementDays: Number(process.env.FREE_SLEEP_LOW_DISK_MOVEMENT_DAYS ?? 14),
+    lowDiskSnoreDays: Number(process.env.FREE_SLEEP_LOW_DISK_SNORE_DAYS ?? 14),
 };
 function dbPaths() {
     const base = path.join(config.dbFolder, 'free-sleep.db');
@@ -96,27 +98,40 @@ export async function pruneMetrics(options) {
     const dbBytesBefore = await getDbSizeBytes();
     let vitalsDays = RETENTION.vitalsDays;
     let movementDays = RETENTION.movementDays;
+    let snoreDays = RETENTION.snoreDays;
     const sleepDays = RETENTION.sleepDays;
     if (freeDiskMbBefore !== undefined && freeDiskMbBefore < RETENTION.lowDiskMb) {
         vitalsDays = Math.min(vitalsDays, RETENTION.lowDiskVitalsDays);
         movementDays = Math.min(movementDays, RETENTION.lowDiskMovementDays);
-        logger.warn(`Low free disk (${freeDiskMbBefore} MB). Using aggressive retention: vitals=${vitalsDays}d movement=${movementDays}d`);
+        snoreDays = Math.min(snoreDays, RETENTION.lowDiskSnoreDays);
+        logger.warn(`Low free disk (${freeDiskMbBefore} MB). Using aggressive retention: vitals=${vitalsDays}d movement=${movementDays}d snore=${snoreDays}d`);
     }
     const vitalsCutoff = moment().subtract(vitalsDays, 'days').unix();
     const movementCutoff = moment().subtract(movementDays, 'days').unix();
+    const snoreCutoff = moment().subtract(snoreDays, 'days').unix();
     const sleepCutoff = moment().subtract(sleepDays, 'days').unix();
-    logger.info(`Pruning metrics (${reason}): vitals < ${vitalsDays}d, movement < ${movementDays}d, sleep < ${sleepDays}d`);
+    logger.info(`Pruning metrics (${reason}): vitals < ${vitalsDays}d, movement < ${movementDays}d, snore < ${snoreDays}d, sleep < ${sleepDays}d`);
     const vitals = await prisma.vitals.deleteMany({
         where: { timestamp: { lt: vitalsCutoff } },
     });
     const movement = await prisma.movement.deleteMany({
         where: { timestamp: { lt: movementCutoff } },
     });
+    let snore = { count: 0 };
+    try {
+        snore = await prisma.snore.deleteMany({
+            where: { timestamp: { lt: snoreCutoff } },
+        });
+    }
+    catch (error) {
+        // Table may not exist until migration is applied on Pod
+        logger.debug(`Snore prune skipped: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const sleep = await prisma.sleep_records.deleteMany({
         where: { entered_bed_at: { lt: sleepCutoff } },
     });
     let vacuumed = false;
-    const deletedAny = vitals.count + movement.count + sleep.count > 0;
+    const deletedAny = vitals.count + movement.count + snore.count + sleep.count > 0;
     const lowDisk = freeDiskMbBefore !== undefined && freeDiskMbBefore < RETENTION.lowDiskMb;
     // VACUUM reclaims file size but can be heavy; only when we deleted rows or disk is low
     if (deletedAny || lowDisk || options?.force) {
@@ -136,6 +151,7 @@ export async function pruneMetrics(options) {
     const result = {
         vitalsDeleted: vitals.count,
         movementDeleted: movement.count,
+        snoreDeleted: snore.count,
         sleepDeleted: sleep.count,
         vacuumed,
         freeDiskMbBefore,
@@ -144,7 +160,7 @@ export async function pruneMetrics(options) {
         dbBytesAfter,
         reason,
     };
-    logger.info(`Prune done (${reason}): vitals=${result.vitalsDeleted} movement=${result.movementDeleted} sleep=${result.sleepDeleted} vacuumed=${vacuumed} dbMb ${((dbBytesBefore ?? 0) / 1e6).toFixed(1)}→${((dbBytesAfter ?? 0) / 1e6).toFixed(1)}`);
+    logger.info(`Prune done (${reason}): vitals=${result.vitalsDeleted} movement=${result.movementDeleted} snore=${result.snoreDeleted} sleep=${result.sleepDeleted} vacuumed=${vacuumed} dbMb ${((dbBytesBefore ?? 0) / 1e6).toFixed(1)}→${((dbBytesAfter ?? 0) / 1e6).toFixed(1)}`);
     return result;
 }
 /**

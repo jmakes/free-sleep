@@ -245,6 +245,10 @@ The server exposes RESTful endpoints for interaction. All responses are JSON unl
   - `side` (optional): Filter by the side of the bed (e.g., "left" or "right").
   - `startTime` (optional): Filter by the start time of sleep records, in ISO 8601 format.
   - `endTime` (optional): Filter by the end time of sleep records, in ISO 8601 format.
+- Each record may include Longevity / Doctor Longevity fields:
+  - `snore_minutes` (optional int): heuristic piezo snore minute total for the night (nullable until scored). Not clinical.
+  - `sleep_score_v1` (optional int 0–100): explainable sleep score matching the Sleep-page formula (duration + continuity + restfulness/stages + vitals). Persisted at analyze-time when possible; otherwise computed on read.
+  - `sleep_score_v1_components` (optional array): breakdown with `key`, `label`, `points`, `maxPoints`, `detail` for `duration` | `continuity` | `restfulness` | `vitals`.
 
 #### Response
 
@@ -256,15 +260,41 @@ The server exposes RESTful endpoints for interaction. All responses are JSON unl
     "entered_bed_at": "2025-02-15T22:00:00Z",
     "left_bed_at": "2025-02-16T06:00:00Z",
     "sleep_period_seconds": 28800,
-    "times_exited_bed": 2
-  },
+    "times_exited_bed": 2,
+    "snore_minutes": 14,
+    "sleep_score_v1": 78,
+    "sleep_score_v1_components": [
+      { "key": "duration", "label": "Duration", "points": 35, "maxPoints": 35, "detail": "8.0h in bed (target 7-9h)" },
+      { "key": "continuity", "label": "Continuity", "points": 20, "maxPoints": 25, "detail": "1 exit(s) >=5m, 0 brief gap(s)" },
+      { "key": "restfulness", "label": "Restfulness", "points": 12, "maxPoints": 20, "detail": "Deep 18% | REM 22% | Awake 8%" },
+      { "key": "vitals", "label": "Vitals stability", "points": 11, "maxPoints": 20, "detail": "HR CV 8.2% | avg HRV 42 ms" }
+    ]
+  }
+]
+```
+
+---
+
+## `/api/metrics/snore`
+
+### GET
+
+- Per-minute piezo snore **heuristic** timeline (mirrors `/api/metrics/movement`). Not OEM ML / clinical.
+- Query parameters: `side`, `startTime`, `endTime` (ISO 8601), same pattern as movement/vitals.
+- Each row includes `snore` (0/1), `likelihood`, and `heuristic: true`.
+- Night totals also appear on sleep records as optional `snore_minutes` (see `/api/metrics/sleep`).
+
+#### Response
+
+```json
+[
   {
-    "id": 2,
-    "side": "right",
-    "entered_bed_at": "2025-02-15T23:00:00Z",
-    "left_bed_at": "2025-02-16T07:00:00Z",
-    "sleep_period_seconds": 28800,
-    "times_exited_bed": 1
+    "id": 1,
+    "side": "left",
+    "timestamp": "2025-02-15T23:10:00Z",
+    "snore": 1,
+    "likelihood": 0.72,
+    "heuristic": true
   }
 ]
 ```

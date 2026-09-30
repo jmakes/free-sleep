@@ -21,6 +21,10 @@ model sleep_records {
   not_present_intervals String
   /// Heuristic piezo snore minute total for the night (nullable until scored). Not OEM/clinical.
   snore_minutes         Int?
+  /// sleep_score_v1 0-100 (nullable until scored). Mirrors Sleep UI formula.
+  sleep_score_v1        Int?
+  /// JSON {version,score,components} for sleep_score_v1 breakdown.
+  sleep_score_v1_json   String?
 
   @@unique([side, entered_bed_at])
   // Create an index on 'side' and 'entered_bed_at'

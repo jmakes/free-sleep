@@ -41,7 +41,8 @@ The server is composed of the following key components:
 - **`/api/schedules`:** Handles scheduling for device operations.
 - **`/api/execute`:** Sends commands directly to the device.
 - **`/api/metrics/vitals`:** Biometrics (heart rate, HRV, breathing rate)
-- **`/api/metrics/sleep`:** Sleep intervals 
+- **`/api/metrics/sleep`:** Sleep intervals (+ optional `snore_minutes`, `sleep_score_v1` for Longevity)
+- **`/api/metrics/snore`:** Per-minute snore heuristic timeline
 
 ### 3. **Jobs Scheduler (`src/jobs/`):**
 - Schedules periodic tasks like temperature adjustments, power on/off, and device priming using the `node-schedule` library.

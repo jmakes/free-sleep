@@ -41,6 +41,7 @@ from resource_usage import get_memory_usage_unix, get_available_memory_mb
 from biometrics_helpers import validate_datetime_utc
 from service_health import update_health, is_biometrics_enabled
 from snore.persist import detect_snore
+from persist_sleep_score import persist_sleep_scores
 
 
 
@@ -149,6 +150,23 @@ if __name__ == "__main__":
                 logger.info(f'Snore heuristic: nothing to score for {args.side}')
         except Exception as snore_error:
             logger.error(f'Snore heuristic failed (non-fatal): {snore_error}')
+
+
+        # sleep_score_v1 from vitals/movement/presence (mirrors Sleep UI formula).
+        try:
+            score_result = persist_sleep_scores(args.side, args.start_time, args.end_time)
+            scored = [n for n in (score_result.get('nights') or []) if n.get('ok')]
+            if scored:
+                totals = ', '.join(
+                    f"id={n.get('id')}:{n.get('sleep_score_v1')}"
+                    for n in scored
+                )
+                logger.info(f'sleep_score_v1 persisted for {args.side}: {totals}')
+            else:
+                logger.info(f'sleep_score_v1: nothing to score for {args.side}')
+        except Exception as score_error:
+            logger.error(f'sleep_score_v1 failed (non-fatal): {score_error}')
+
 
         thresh_bits = []
         if piezo_floor is not None:

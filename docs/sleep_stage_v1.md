@@ -82,7 +82,9 @@ Implementations:
 | Restfulness | 20 | Deep+REM share; awake penalty (or quiet movement fallback) |
 | Vitals stability | 20 | Lower HR coefficient of variation; small HRV bonus |
 
-UI: `app/src/lib/sleepScoreV1.ts` + `SleepScoreCard`. Python: `biometrics/sleep_detection/sleep_score_v1.py`.
+Shared TS (source of truth): `server/src/lib/sleepScoreV1.ts` (app re-exports via `app/src/lib/sleepScoreV1.ts`) + `SleepScoreCard`.
+Python mirror + analyze persist: `biometrics/sleep_detection/sleep_score_v1.py` → `sleep_records.sleep_score_v1` / `sleep_score_v1_json`.
+API: `GET /api/metrics/sleep` exposes `sleep_score_v1` + optional `sleep_score_v1_components` (Longevity / Doctor Longevity).
 
 More awake % lowers restfulness naturally — that is intended when onset latency and quiet elevated-HR wake are real.
 

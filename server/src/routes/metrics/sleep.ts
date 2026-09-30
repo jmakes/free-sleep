@@ -6,6 +6,8 @@ import { loadSleepRecords } from '../../db/loadSleepRecords.js';
 import { prisma } from '../../db/prisma.js';
 import { resolveUnixTimeRange } from '../../db/metricsRetention.js';
 import logger from '../../logger.js';
+import { enrichSleepScores } from '../../db/enrichSleepScores.js';
+import { ensureSleepScoreSchema } from '../../db/ensureSleepScoreSchema.js';
 
 const router = express.Router();
 
@@ -37,13 +39,16 @@ router.get('/sleep', async (req: Request<object, object, object, SleepQuery>, re
 
     if (side) query.side = side;
 
+    await ensureSleepScoreSchema();
+
     const sleepRecords = await prisma.sleep_records.findMany({
       where: query,
       orderBy: { entered_bed_at: 'asc' },
     });
 
     const formattedRecords = await loadSleepRecords(sleepRecords);
-    res.json(formattedRecords);
+    const withScores = await enrichSleepScores(formattedRecords);
+    res.json(withScores);
   } catch (error) {
     logger.error(error);
     const message = error instanceof Error ? error.message : 'Failed to load sleep records';
