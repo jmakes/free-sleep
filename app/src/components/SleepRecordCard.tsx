@@ -23,6 +23,7 @@ import TransferWithinAStationIcon from '@mui/icons-material/TransferWithinAStati
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PersonIcon from '@mui/icons-material/Person';
+import HearingIcon from '@mui/icons-material/Hearing';
 import { useSettings } from '@api/settings.ts';
 import { displayExitCount } from '@lib/bedExits.ts';
 
@@ -171,6 +172,13 @@ export default function SleepRecordCard({ sleepRecord, refetch }: SleepRecordPro
             label: 'Times exited bed',
             icon: <TransferWithinAStationIcon fontSize="small" />,
             value: exitValue,
+          },
+          {
+            label: 'Snore (heuristic)',
+            icon: <HearingIcon fontSize="small" />,
+            value: sleepRecord.snore_minutes != null
+              ? `${sleepRecord.snore_minutes} min`
+              : 'Not scored',
           },
         ].map(({ label, value, icon }) => (
           <Box key={ label } display="flex" justifyContent="space-between" alignItems="center">

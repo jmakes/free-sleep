@@ -19,7 +19,9 @@ import { useSleepRecords } from '@api/sleep.ts';
 import { useTheme } from '@mui/material/styles';
 import { useVitalsRecords } from '@api/vitals.ts';
 import { useMovementRecords } from '@api/movement.ts';
+import { useSnoreRecords } from '@api/snore.ts';
 import MovementChart from '@components/MovementChart.tsx';
+import SnoreChart from '@components/SnoreChart.tsx';
 import SleepStageChart from '@components/SleepStageChart.tsx';
 import PresenceTimelineChart from '@components/PresenceTimelineChart.tsx';
 import SleepScoreCard from '@components/SleepScoreCard.tsx';
@@ -87,7 +89,13 @@ export default function SleepPage() {
   selectedSleepRecord !== undefined
   );
 
-
+  const { data: snoreRecords } = useSnoreRecords({
+    side,
+    startTime: selectedSleepRecord?.entered_bed_at,
+    endTime: selectedSleepRecord?.left_bed_at
+  },
+  selectedSleepRecord !== undefined
+  );
 
   const scoreResult = useMemo(() => {
     if (!selectedSleepRecord) return null;
@@ -223,6 +231,9 @@ export default function SleepPage() {
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Movement chart">
                   <MovementChart movementRecords={ movementRecords || [] } label="Restlessness"/>
+                </ErrorBoundary>
+                <ErrorBoundary componentName="Snore chart">
+                  <SnoreChart snoreRecords={ snoreRecords || [] }/>
                 </ErrorBoundary>
                 <ErrorBoundary componentName="Breathing rate chart">
                   <VitalsLineChart vitalsRecords={ vitalsRecords } metric="breathing_rate"/>

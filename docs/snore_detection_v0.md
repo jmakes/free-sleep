@@ -52,9 +52,9 @@ Mirrors movement:
 3. **Compute** from `analyze_sleep` after presence/movement, streaming `.RAW` (does not alter live vitals/presence).
 4. **API** `GET /api/metrics/snore?side=&startTime=&endTime=` — each row includes `heuristic: true`. Sleep records expose optional `snore_minutes`.
 
-## Sleep-page UI (chunk 2 — not shipped)
+## Sleep-page UI (chunk 2)
 
-Sleep page: total snore minutes on `SleepRecordCard` + optional timeline under stages/restlessness (clearly labeled heuristic). Do not ship UI until overnight runs look plausible.
+Sleep page: total snore minutes on `SleepRecordCard` (labeled heuristic) + minute timeline `SnoreChart` under restlessness, wired to `GET /api/metrics/snore` and `sleep_records.snore_minutes`.
 
 ## Caveats
 
@@ -67,5 +67,5 @@ Sleep page: total snore minutes on `SleepRecordCard` + optional timeline under s
 ## Status
 
 - **Chunk 1 (this):** schema + analyze-sleep wiring + offline `--persist` + metrics API fields labeled heuristic.
-- **Chunk 2:** Sleep-page UI.
+- **Chunk 2 (this):** Sleep-page UI (`SleepRecordCard` total + `SnoreChart` timeline).
 - **Chunk 3:** bump / Pod deploy when Jake asks.
