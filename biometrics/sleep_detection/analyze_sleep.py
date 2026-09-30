@@ -40,6 +40,7 @@ from sleep_detector import detect_sleep, detect_movement
 from resource_usage import get_memory_usage_unix, get_available_memory_mb
 from biometrics_helpers import validate_datetime_utc
 from service_health import update_health, is_biometrics_enabled
+from snore.persist import detect_snore
 
 
 
@@ -125,6 +126,29 @@ if __name__ == "__main__":
         cap_threshold = merged_df.attrs.get('cap_threshold')
 
         detect_movement(args.side, merged_df)
+
+        # Additive snore heuristic on RAW piezo (does not alter presence/vitals).
+        try:
+            snore_result = detect_snore(
+                args.side,
+                args.start_time,
+                args.end_time,
+                FOLDER_PATH,
+            )
+            nights = snore_result.get('nights') or []
+            scored = [n for n in nights if n.get('ok')]
+            if scored:
+                totals = ', '.join(
+                    f"id={n.get('id')}:{n.get('snore_minutes')}m"
+                    for n in scored
+                )
+                logger.info(f'Snore heuristic persisted for {args.side}: {totals}')
+            elif nights:
+                logger.warning(f'Snore heuristic ran but no successful nights for {args.side}')
+            else:
+                logger.info(f'Snore heuristic: nothing to score for {args.side}')
+        except Exception as snore_error:
+            logger.error(f'Snore heuristic failed (non-fatal): {snore_error}')
 
         thresh_bits = []
         if piezo_floor is not None:

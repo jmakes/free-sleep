@@ -19,6 +19,8 @@ export interface SleepRecord {
   times_exited_bed: number;
   present_intervals: [string, string][];
   not_present_intervals: [string, string][];
+  /** Heuristic piezo snore minute total (nullable until scored). */
+  snore_minutes?: number | null;
 }
 
 export interface MovementRecord {
@@ -27,3 +29,13 @@ export interface MovementRecord {
   total_movement: number;
 }
 
+export interface SnoreRecord {
+  id?: number;
+  timestamp: string;
+  side: Side;
+  /** Heuristic binary 0/1 — not clinical. */
+  snore: number;
+  /** Heuristic likelihood — not OEM ML. */
+  likelihood: number;
+  heuristic: true;
+}

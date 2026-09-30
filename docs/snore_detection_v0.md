@@ -1,6 +1,6 @@
 # Snore detection v0 (piezo spectral heuristic)
 
-Prototype only. **Not** Eight Sleep’s neural net, **not** a medical device, and **not** mic-based.
+Prototype. **Not** Eight Sleep’s neural net, **not** a medical device, and **not** mic-based.
 
 ## Sensor path (OEM-aligned)
 
@@ -24,28 +24,37 @@ Loader: `biometrics/load_raw_files.py` (`load_piezo_row` → `np.frombuffer(...,
 | Score | Night-adaptive: quiet-presence baseline = median + k·MAD on ratio, peakiness, and band RMS (no person-specific physiology constants) |
 | Reject | Night-adaptive peak-to-peak (median + 3·MAD) **and** snore-band ratio ≤ night median → likelihood 0 (loud snore can raise PTP without looking like a toss) |
 
+Core: `biometrics/snore/features.py`, `biometrics/snore/analyze.py`  
 Offline runner: `scripts/analyze_snore_v0.py`  
-Core features: `biometrics/snore/features.py`
+Post-night: `analyze_sleep.py` calls `snore.persist.detect_snore` after presence/movement (additive; failures are non-fatal).
 
 ```bash
-# On a host that can read Pod RAW + call the metrics API:
+# Against Pod RAW + sleep API:
 python3 scripts/analyze_snore_v0.py \
   --raw-dir "$RAW_DATA_FOLDER" \
   --pod-api "$POD_API" \
   --night-ids <left_id>,<right_id> \
   --out /tmp/snore_v0.json
+
+# Persist heuristic timeline into SQLite (snore table + sleep_records.snore_minutes):
+python3 scripts/analyze_snore_v0.py \
+  --raw-dir "$RAW_DATA_FOLDER" \
+  --side right --start <UTC_ISO> --end <UTC_ISO> \
+  --persist
 ```
 
-## Persist / Sleep-page path (not shipped yet)
+## Persist / API (chunk 1)
 
-Do **not** add UI until overnight runs look plausible (clustered snore minutes during sleep, not only during tosses).
+Mirrors movement:
 
-Proposed attachment (parallel to `vitals` / `movement`):
+1. **SQLite** `snore (side, timestamp, snore, likelihood)` at 1-minute resolution during presence; retention ~30 d (`FREE_SLEEP_SNORE_RETENTION_DAYS`).
+2. **Night total** `sleep_records.snore_minutes` (nullable Int) — heuristic count of snore-labeled minutes.
+3. **Compute** from `analyze_sleep` after presence/movement, streaming `.RAW` (does not alter live vitals/presence).
+4. **API** `GET /api/metrics/snore?side=&startTime=&endTime=` — each row includes `heuristic: true`. Sleep records expose optional `snore_minutes`.
 
-1. **SQLite** table e.g. `snore_minutes (side, timestamp, likelihood, snore_binary)` at 1-minute resolution, retention similar to movement (~30 d), **or** night-level summary columns / JSON on `sleep_records` (`snore_minutes_total`, optional timeline blob).
-2. **Compute** offline first; later optionally from `analyze_sleep` / a post-night job that streams `.RAW` (same CBOR path as vitals — do not alter live stream presence/HR paths).
-3. **API** `GET /api/metrics/snore?side=&startTime=&endTime=` mirroring vitals/movement.
-4. **UI** Sleep page: total snore minutes on `SleepRecordCard` + optional timeline under stages/restlessness (clearly labeled heuristic).
+## Sleep-page UI (chunk 2 — not shipped)
+
+Sleep page: total snore minutes on `SleepRecordCard` + optional timeline under stages/restlessness (clearly labeled heuristic). Do not ship UI until overnight runs look plausible.
 
 ## Caveats
 
@@ -57,4 +66,6 @@ Proposed attachment (parallel to `vitals` / `movement`):
 
 ## Status
 
-v0 = solid offline script + this note. Deploy / DB / UI only after signal review.
+- **Chunk 1 (this):** schema + analyze-sleep wiring + offline `--persist` + metrics API fields labeled heuristic.
+- **Chunk 2:** Sleep-page UI.
+- **Chunk 3:** bump / Pod deploy when Jake asks.

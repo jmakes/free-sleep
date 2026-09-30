@@ -12,6 +12,7 @@ import services from '../routes/services/services.js';
 import schedules from '../routes/schedules/schedules.js';
 import sleep from '../routes/metrics/sleep.js';
 import movement from '../routes/metrics/movement.js';
+import snore from '../routes/metrics/snore.js';
 import vitals from '../routes/metrics/vitals.js';
 import presence from '../routes/metrics/presence.js';
 import metricsStats from '../routes/metrics/stats.js';
@@ -34,6 +35,7 @@ export default function (app: Express) {
   app.use('/api/', settings);
   app.use('/api/', services);
   app.use('/api/metrics/', movement);
+  app.use('/api/metrics/', snore);
   app.use('/api/metrics/', sleep);
   app.use('/api/metrics/', vitals);
   app.use('/api/metrics/', presence);

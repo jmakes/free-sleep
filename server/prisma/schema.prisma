@@ -19,6 +19,8 @@ model sleep_records {
   times_exited_bed      Int
   present_intervals     String
   not_present_intervals String
+  /// Heuristic piezo snore minute total for the night (nullable until scored). Not OEM/clinical.
+  snore_minutes         Int?
 
   @@unique([side, entered_bed_at])
   // Create an index on 'side' and 'entered_bed_at'
@@ -48,3 +50,14 @@ model movement {
 }
 
 
+/// Per-minute piezo snore heuristic (band energy / peakiness). Not OEM ML / clinical.
+model snore {
+  id          Int    @id @default(autoincrement())
+  timestamp   Int // 1-minute interval start (Unix timestamp)
+  side        String
+  snore       Int // Heuristic binary 0/1
+  likelihood  Float // Heuristic score
+
+  @@unique([side, timestamp])
+  @@index([side, timestamp])
+}

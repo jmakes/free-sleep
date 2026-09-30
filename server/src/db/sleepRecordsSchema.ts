@@ -9,6 +9,8 @@ export const sleepRecordSchema = z.object({
   times_exited_bed: z.number().int(),
   present_intervals: z.array(z.tuple([z.string().datetime(), z.string().datetime()])),
   not_present_intervals: z.array(z.tuple([z.string().datetime(), z.string().datetime()])),
+  /** Heuristic piezo snore minute total (nullable until scored). Not OEM/clinical. */
+  snore_minutes: z.number().int().nullable().optional(),
 });
 
 // TypeScript type inference from Zod
