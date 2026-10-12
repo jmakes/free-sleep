@@ -39,7 +39,10 @@ DEFAULT_FUSION_MODE = 'piezo_primary'
 
 # Sleep period rules.
 MIN_SLEEP_HOURS = 3
-MAX_PRESENCE_GAP_MINUTES = 15
+MAX_PRESENCE_GAP_MINUTES = 45  # one mid-night bathroom/flicker gap must not split a night
+# Second pass: adjacent fragments this close are merged before the MIN_SLEEP_HOURS
+# filter when either fragment is too short to stand alone.
+FRAGMENT_MERGE_GAP_MINUTES = 90
 # Meaningful bed exit: away long enough to be a real leave (bathroom / out of bed).
 # Brief gaps (tosses / flicker) are tracked separately and do not inflate exits.
 MIN_EXIT_GAP_SECONDS = 5 * 60  # 5 minutes

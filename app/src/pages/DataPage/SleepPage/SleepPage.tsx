@@ -26,6 +26,7 @@ import SleepStageChart from '@components/SleepStageChart.tsx';
 import PresenceTimelineChart from '@components/PresenceTimelineChart.tsx';
 import SleepScoreCard from '@components/SleepScoreCard.tsx';
 import { computeSleepScoreV1 } from '@lib/sleepScoreV1.ts';
+import { pickLongestOfLatestNight } from '@lib/pickNightRecord.ts';
 import ErrorBoundary from '@components/ErrorBoundary.tsx';
 import { useSettings } from '@api/settings.ts';
 import { useServices } from '@api/services.ts';
@@ -111,9 +112,10 @@ export default function SleepPage() {
   }, [selectedSleepRecord, vitalsRecords, movementRecords]);
 
   useEffect(() => {
-    // Default to last record selected
-    if (sleepRecords?.length) {
-      setSelectedSleepRecord(sleepRecords[sleepRecords.length - 1]);
+    // Default to the longest record of the most recent night
+    const pick = pickLongestOfLatestNight(sleepRecords);
+    if (pick) {
+      setSelectedSleepRecord(pick);
     }
   }, [sleepRecords]);
 

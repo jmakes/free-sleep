@@ -34,6 +34,25 @@ from get_logger import get_logger
 
 logger = get_logger('auto-calibrate')
 
+try:
+    from auto_cal_guards import (
+        AUTO_CAL_MIN_RETAINED_DAYS,
+        effective_lookback,
+        is_overflow,
+        oldest_raw_mtime,
+        retained_days,
+        stats_look_wrapped,
+    )
+except ImportError:
+    from sleep_detection.auto_cal_guards import (
+        AUTO_CAL_MIN_RETAINED_DAYS,
+        effective_lookback,
+        is_overflow,
+        oldest_raw_mtime,
+        retained_days,
+        stats_look_wrapped,
+    )
+
 from load_raw_files import load_raw_files
 from piezo_data import load_piezo_df
 from resource_usage import get_available_memory_mb
@@ -203,6 +222,9 @@ def _accumulate_day(
     for ts, row in merged.iterrows():
         in_sched = _in_any_window(ts, schedule_windows_local, buffer)
         pr = float(row['_piezo_range'])
+        if is_overflow(pr):
+            # unsigned-wrap artefact (~2**32), not real motion
+            continue
         # Away mode => almost certainly not in bed; never use schedule as occupied.
         if force_empty or not in_sched:
             empty_piezo.append(pr)
@@ -266,6 +288,24 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
     empty_piezo: List[float] = []
     occ_piezo: List[float] = []
 
+    requested_days = days
+    available_days = retained_days(oldest_raw_mtime(FOLDER_PATH))
+    days = effective_lookback(requested_days, available_days)
+    logger.info(
+        f'{side} lookback: requested={requested_days}d retained_raw={available_days}d '
+        f'-> using {days}d'
+    )
+    if days < AUTO_CAL_MIN_RETAINED_DAYS:
+        logger.warning(
+            f'{side} auto-cal skipped: only {available_days}d of RAW retained '
+            f'(< {AUTO_CAL_MIN_RETAINED_DAYS}d)'
+        )
+        return {
+            'side': side, 'days': 0, 'requested_days': requested_days,
+            'retained_days': available_days, 'applied': False, 'ok': False,
+            'error': f'Not enough retained RAW data ({available_days}d)',
+        }
+
     for day_offset in range(1, days + 1):
         # Look at completed local days (yesterday back)
         day_local = (now_local - timedelta(days=day_offset)).replace(
@@ -299,6 +339,8 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
     report: Dict[str, Any] = {
         'side': side,
         'days': days,
+        'requested_days': requested_days,
+        'retained_days': available_days,
         'away_mode': away_mode,
         'empty_piezo_samples': len(empty_piezo),
         'occ_piezo_samples': len(occ_piezo),
@@ -437,6 +479,15 @@ def run_auto_cal(side: str, days: int, apply: bool) -> Dict[str, Any]:
         if old_piezo is not None:
             piezo_floor = int(_blend(float(old_piezo), float(piezo_floor)))
             piezo_floor = int(np.clip(piezo_floor, MIN_PIEZO_FLOOR_AUTO, MAX_PIEZO_FLOOR_AUTO))
+
+    if stats_look_wrapped(empty_p95, occ_p50):
+        logger.warning(
+            f'{side} auto-cal rejected: piezo stats look overflowed '
+            f'(empty_p95={int(empty_p95)}, occ_p50={int(occ_p50)})'
+        )
+        report['ok'] = False
+        report['error'] = 'Piezo range statistics look overflowed (~2**32); not applying'
+        return report
 
     report['thresholds'] = {
         'cap_method': DEFAULT_CAP_METHOD,

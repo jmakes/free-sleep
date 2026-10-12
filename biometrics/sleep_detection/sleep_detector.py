@@ -29,6 +29,7 @@ try:
         DEFAULT_CAP_THRESHOLD_PERCENT,
         DEFAULT_PIEZO_ROLLING_SECONDS,
         DEFAULT_PIEZO_THRESHOLD_PERCENT,
+        FRAGMENT_MERGE_GAP_MINUTES,
         MAX_PRESENCE_GAP_MINUTES,
         MIN_EXIT_GAP_SECONDS,
         MIN_SLEEP_HOURS,
@@ -44,6 +45,7 @@ except ImportError:
         DEFAULT_CAP_THRESHOLD_PERCENT,
         DEFAULT_PIEZO_ROLLING_SECONDS,
         DEFAULT_PIEZO_THRESHOLD_PERCENT,
+        FRAGMENT_MERGE_GAP_MINUTES,
         MAX_PRESENCE_GAP_MINUTES,
         MIN_EXIT_GAP_SECONDS,
         MIN_SLEEP_HOURS,
@@ -52,6 +54,11 @@ except ImportError:
         get_piezo_range_threshold,
         load_sensor_profile,
     )
+
+try:
+    from sleep_intervals import identify_sleep_intervals
+except ImportError:
+    from sleep_detection.sleep_intervals import identify_sleep_intervals
 
 logger = get_logger()
 
@@ -114,60 +121,26 @@ def _identify_sleep_intervals(
     max_gap_in_minutes: int = MAX_PRESENCE_GAP_MINUTES,
     min_sleep_hours: float = MIN_SLEEP_HOURS,
     min_exit_gap_seconds: int = MIN_EXIT_GAP_SECONDS,
+    fragment_merge_gap_minutes: int = FRAGMENT_MERGE_GAP_MINUTES,
 ):
     """
-    Merge presence with gaps ≤ max_gap_in_minutes; keep only periods with
-    total presence > min_sleep_hours (default 3h).
-
-    times_exited_bed counts only gaps ≥ min_exit_gap_seconds (default 45s).
-    Shorter dropouts (tosses, sensor flicker) still merge the night but are not exits.
+    Merge presence with gaps <= max_gap_in_minutes into fragments, then merge
+    adjacent fragments (<= fragment_merge_gap_minutes apart, either one too
+    short) before keeping periods with total presence > min_sleep_hours.
+    times_exited_bed counts gaps >= min_exit_gap_seconds.
     """
     logger.debug(
         f'Identifying sleep intervals... | max_gap_in_minutes: {max_gap_in_minutes} '
+        f'| fragment_merge_gap_minutes: {fragment_merge_gap_minutes} '
         f'| min_sleep_hours: {min_sleep_hours} | min_exit_gap_seconds: {min_exit_gap_seconds}'
     )
-    max_gap = timedelta(minutes=max_gap_in_minutes)
-    min_sleep = timedelta(hours=min_sleep_hours)
-    min_exit_gap = timedelta(seconds=min_exit_gap_seconds)
-    if not present_intervals:
-        return []
-
-    sleep_intervals = []
-    current_start, current_end = present_intervals[0]
-    total_sleep_time = current_end - current_start
-    exit_count = 0
-
-    for ix in range(1, len(present_intervals)):
-        next_start, next_end = present_intervals[ix]
-        gap = next_start - current_end
-
-        if gap <= max_gap:
-            current_end = next_end
-            total_sleep_time += (next_end - next_start)
-            if gap >= min_exit_gap:
-                exit_count += 1
-        else:
-            if total_sleep_time > min_sleep:
-                sleep_intervals.append({
-                    'entered_bed_at': current_start,
-                    'left_bed_at': current_end,
-                    'sleep_period_seconds': int(total_sleep_time.total_seconds()),
-                    'times_exited_bed': exit_count,
-                })
-
-            current_start, current_end = next_start, next_end
-            total_sleep_time = current_end - current_start
-            exit_count = 0
-
-    if total_sleep_time > min_sleep:
-        sleep_intervals.append({
-            'entered_bed_at': current_start,
-            'left_bed_at': current_end,
-            'sleep_period_seconds': int(total_sleep_time.total_seconds()),
-            'times_exited_bed': exit_count,
-        })
-
-    return sleep_intervals
+    return identify_sleep_intervals(
+        present_intervals,
+        max_gap_in_minutes=max_gap_in_minutes,
+        min_sleep_hours=min_sleep_hours,
+        min_exit_gap_seconds=min_exit_gap_seconds,
+        fragment_merge_gap_minutes=fragment_merge_gap_minutes,
+    )
 
 
 def _filter_intervals(

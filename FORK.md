@@ -38,10 +38,11 @@ User data lives under **`/persistent/free-sleep-data/`** and is **not** wiped by
 | Schedule saves default to all days | Done | |
 | Live **Sensors** view | Done | Data → Sensors (live + thresholds) |
 | **Guided Calibration** | Done | Data → Sensors: ≥2× unoccupied/center/inner/outer (reps averaged) → max-z + piezo floor |
+| Night split fix | Done | Gaps ≤45m merge; short fragments ≤90m apart merge before the 3h filter; Sleep page defaults to longest record of latest night |
 | Sleep presence fusion | Done | Cap max-z (not sum); piezo-primary OR soft-assist; per-side piezo floor; analyze diagnostics |
 | Person-first UI shell (Left / Right / House) | TODO | Parked until sleep path is solid |
 | Off-box analysis APIs (#6) | TODO | Only if on-device resources are insufficient |
-| Auto presence calibration (beta) | Code on main | Settings → Features → Beta; weekly Wed 15:00; piezo floor ≥50k; off by default |
+| Auto presence calibration (beta) | Code on main | Per-side setting (each side's settings, not under Features); weekly Wed 15:00; lookback capped to retained RAW (skips if <1 day); rejects overflowed piezo stats; piezo floor ≥50k; off by default |
 
 ---
 
