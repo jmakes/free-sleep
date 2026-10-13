@@ -20,8 +20,35 @@ from db import (
 )
 from get_logger import get_logger
 from snore.analyze import ALGORITHM, analyze_side, load_sleep_records_from_db, parse_dt
+from snore.gating import excluded_windows, gate_timeline, snore_total
+
+try:
+    from sleep_detection.sleep_score_v1 import load_night_inputs_from_db
+    from sleep_detection.stage_v1 import compute_stage_v1
+except ImportError:  # analyze_sleep puts sleep_detection/ itself on sys.path
+    from sleep_score_v1 import load_night_inputs_from_db
+    from stage_v1 import compute_stage_v1
 
 logger = get_logger()
+
+
+def _stage_for_record(rec: dict, side: str, entered: datetime, left: datetime) -> Optional[dict]:
+    """stage_v1 for this night from DB vitals/movement/presence gaps; None on failure."""
+    try:
+        nights = load_night_inputs_from_db(DB_FILE_PATH, side, entered, left)
+        night = next((n for n in nights if rec.get('id') is not None and n['id'] == rec.get('id')), None)
+        if night is None:
+            night = next((n for n in nights if n['entered_bed_at'] == int(entered.timestamp())), None)
+        if night is None:
+            return None
+        return compute_stage_v1(
+            night['entered_bed_at'], night['left_bed_at'],
+            vitals=night['vitals'], movement=night['movement'],
+            not_present_intervals=night['not_present_intervals'],
+        )
+    except Exception as error:
+        logger.warning(f'Snore gating: staging failed for night id={rec.get("id")}: {error}')
+        return None
 
 
 def detect_snore(
@@ -84,7 +111,16 @@ def detect_snore(
             })
             continue
 
-        timeline = result.get('timeline') or []
+        raw_total = int(result.get('snore_minutes') or 0)
+        windows = excluded_windows(_stage_for_record(rec, rec_side, entered, left))
+        if windows is None:
+            logger.warning(
+                f'Snore gating skipped for night id={rec.get("id")}: no sleep onset/staging '
+                '(counting all present minutes)'
+            )
+        timeline, gated = gate_timeline(result.get('timeline') or [], windows)
+        result['snore_minutes'] = snore_total(timeline)
+        result['gated_awake_minutes'] = gated
         if timeline:
             df = pd.DataFrame(timeline)
             # Keep only columns the snore table expects
@@ -109,6 +145,9 @@ def detect_snore(
             'ok': True,
             'side': rec_side,
             'snore_minutes': total,
+            'raw_snore_minutes': raw_total,
+            'gated_awake_minutes': gated,
+            'gating': windows is not None,
             'present_minutes': result.get('present_minutes'),
             'packets_scored': result.get('packets_scored'),
             'raw_files_used': result.get('raw_files_used'),
@@ -117,7 +156,7 @@ def detect_snore(
         }
         logger.info(
             f'Snore heuristic saved {rec_side} night id={rec.get("id")}: '
-            f'{total} snore_minutes / {result.get("present_minutes")} present '
+            f'{total} snore_minutes (raw {raw_total}, gated awake {gated}) / {result.get("present_minutes")} present '
             f'(packets={result.get("packets_scored")})'
         )
         night_summaries.append(summary)

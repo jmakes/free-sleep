@@ -69,3 +69,19 @@ Sleep page: total snore minutes on `SleepRecordCard` (labeled heuristic) + minut
 - **Chunk 1 (this):** schema + analyze-sleep wiring + offline `--persist` + metrics API fields labeled heuristic.
 - **Chunk 2 (this):** Sleep-page UI (`SleepRecordCard` total + `SnoreChart` timeline).
 - **Chunk 3:** bump / Pod deploy when Jake asks.
+
+
+## Sleep gating (jmakes.17)
+
+Snore minutes count only during scored sleep. After the heuristic labels each
+present minute, `biometrics/snore/gating.py` zeroes minutes that fall in:
+
+- stage_v1 `awake` epochs (including presence gaps and arousals);
+- short non-awake blips (< 3 epochs / 15 min) flanked by awake epochs;
+- the window before sustained sleep onset (first run of >= 3 non-awake
+  epochs), plus a 10-minute grace after it.
+
+If staging finds no sustained sleep (e.g. vitals missing), gating fails open
+and the analyzer logs it. Rows are kept with `snore=0`, so the Quiet/Snore
+timeline and re-scores overwrite stale labels. `snore_minutes` is the gated
+total; the log also prints the raw total and the number of gated minutes.
