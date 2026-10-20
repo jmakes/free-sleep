@@ -10,6 +10,7 @@ import serverInfo from '../serverInfo.json' with { type: 'json' };
 import { WIFI_SIGNAL_STRENGTH } from './wifiSignalStrength.js';
 import { extractGestureCounters, parseDeviceStatusLines } from './gestureFields.js';
 import { GestureSchema } from '../db/settingsSchema.js';
+import { waterTracker } from './waterState.js';
 const RawDeviceData = z.object({
     tgHeatLevelR: z.string().regex(/^-?\d+$/, { message: 'tgHeatLevelR must be a numeric value in a string' }),
     tgHeatLevelL: z.string().regex(/^-?\d+$/, { message: 'tgHeatLevelL must be a numeric value in a string' }),
@@ -140,6 +141,15 @@ const HUB_VERSION = await detectHubVersion();
 // The default naming convention was ugly... This remaps the keys to human-readable names
 export async function loadDeviceStatus(response, getGestures) {
     const rawDeviceData = parseRawDeviceData(response);
+    try {
+        const previous = waterTracker.record(rawDeviceData.waterLevel, rawDeviceData.priming === 'true');
+        if (previous !== null) {
+            logger.info(`Water reservoir flag: ${previous} -> ${waterTracker.get().state} (waterLevel=${rawDeviceData.waterLevel})`);
+        }
+    }
+    catch (error) {
+        logger.error(error);
+    }
     const leftSideSecondsRemaining = Number(rawDeviceData.heatTimeL);
     const rightSideSecondsRemaining = Number(rawDeviceData.heatTimeR);
     await memoryDB.read();

@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import deviceStatus from '../routes/deviceStatus/deviceStatus.js';
+import water from '../routes/water/water.js';
 import alarm from '../routes/alarm/alarm.js';
 import execute from '../routes/execute/execute.js';
 import jobs from '../routes/jobs/jobs.js';
@@ -26,6 +27,7 @@ export default function (app) {
     logger.debug('Registering routes...');
     app.use('/api/', alarm);
     app.use('/api/', deviceStatus);
+    app.use('/api/', water);
     app.use('/api/', execute);
     app.use('/api/', schedules);
     app.use('/api/', jobs);
