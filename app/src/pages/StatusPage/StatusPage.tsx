@@ -10,11 +10,14 @@ import Grid from '@mui/material/GridLegacy';
 import PageContainer from '../PageContainer.tsx';
 import StatusCard from './StatusCard.tsx';
 import { ServerStatusKey, StatusInfo } from '@api/serverStatusSchema.ts';
+import { useWaterStatus } from '@api/water.ts';
+import { waterLabel } from '@lib/waterStatus.ts';
 
 export default function StatusPage() {
   const { data, isLoading, dataUpdatedAt } = useServerStatus(5_000);
   const updatedAt = moment(dataUpdatedAt);
   const formatted = updatedAt.format('YYYY-MM-DD HH:mm:ss z');
+  const { data: water } = useWaterStatus();
   return (
     <PageContainer
       sx={ {
@@ -38,6 +41,11 @@ export default function StatusPage() {
           } }
         >
           Updated at: { formatted }
+        </Typography>
+        <Typography variant="body1" fontWeight={ 600 }>
+          Water tank: { waterLabel(water) }
+          { water?.isLow && water.lowSince ? ` (since ${moment(water.lowSince).format('MMM D HH:mm')})` : '' }
+          { water?.isPriming ? ' · priming' : '' }
         </Typography>
       </Stack>
       { isLoading && <CircularProgress /> }

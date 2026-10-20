@@ -3,6 +3,7 @@ import Navbar from './Navbar';
 import Box from '@mui/material/Box';
 import GestureToast from './GestureToast';
 import AnalyzeSleepBanner from './AnalyzeSleepBanner';
+import WaterBanner from './WaterBanner';
 
 
 export default function Layout() {
@@ -20,6 +21,7 @@ export default function Layout() {
         justifyContent: 'center',
       } }
     >
+      <WaterBanner />
       <AnalyzeSleepBanner />
       { /* Renders current route */ }
       <Outlet/>

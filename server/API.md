@@ -70,6 +70,42 @@ The server exposes RESTful endpoints for interaction. All responses are JSON unl
 
 ---
 
+## `/api/water`
+
+### GET
+Water reservoir state from the Pod firmware's **binary** low-water flag
+(`waterLevel` in DEVICE_STATUS: `"true"` = OK, `"false"` = low/empty). The Pod
+has no level sensor reading, so `levelPercent` is always `null`.
+
+Served from the last device-status sample (the server already polls about every
+second), so polling this endpoint adds no hardware requests. State is in memory;
+`lowSince` resets if the service restarts.
+
+Query: `alertAfterSeconds` (default `120`, max 7 days): `alert` becomes `true`
+once the flag has been continuously low for at least this long.
+
+```json
+{
+  "state": "low",
+  "isLow": true,
+  "isPriming": false,
+  "source": "firmware_flag",
+  "levelPercent": null,
+  "rawValue": "false",
+  "lowSince": "2026-01-01T10:05:00.000Z",
+  "lastChangedAt": "2026-01-01T10:05:00.000Z",
+  "lastCheckedAt": "2026-01-01T10:20:01.000Z",
+  "lowForSeconds": 901,
+  "alertAfterSeconds": 120,
+  "alert": true,
+  "stale": false
+}
+```
+
+`state` is `unknown` before the first sample or if the firmware sends an
+unexpected value. `stale` is `true` when no sample arrived for 5 minutes;
+treat that as "can't tell", not as "OK".
+
 ## `/api/settings`
 
 ### GET

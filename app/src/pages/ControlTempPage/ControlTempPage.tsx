@@ -11,7 +11,6 @@ import PowerButton from './PowerButton.tsx';
 import PrimingNotification from './PrimingNotification.tsx';
 import SideControl from '../../components/SideControl.tsx';
 import Slider from './Slider.tsx';
-import WaterNotification from './WaterNotification.tsx';
 import { useAppStore } from '@state/appStore.tsx';
 import { useControlTempStore } from './controlTempStore.tsx';
 import { useDeviceStatus } from '@api/deviceStatus';
@@ -79,7 +78,6 @@ export default function ControlTempPage() {
           <AlarmNotification/>
         </ErrorBoundary>
         <AwayNotification settings={ settings }/>
-        <WaterNotification/>
       </Box>
       <AlarmDismissal refetch={ refetch }/>
       { isUpdating && <CircularProgress/> }
