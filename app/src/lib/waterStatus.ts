@@ -40,3 +40,13 @@ export function waterLabel(status: WaterStatus | undefined): string {
   if (status.isLow) return 'Low';
   return 'OK';
 }
+
+export type WaterChipModel = { label: string; color: 'success' | 'warning' | 'default' };
+
+// Settings → Device settings row. Same label as the Status page (waterLabel).
+export function waterChip(status: WaterStatus | undefined): WaterChipModel {
+  const label = waterLabel(status);
+  if (label === 'Low') return { label, color: 'warning' };
+  if (label === 'OK') return { label, color: 'success' };
+  return { label, color: 'default' };
+}

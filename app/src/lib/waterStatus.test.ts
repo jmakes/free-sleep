@@ -1,7 +1,7 @@
 // Run: node --test src/lib/waterStatus.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { waterBanner, waterLabel, type WaterStatus } from './waterStatus.ts';
+import { waterBanner, waterChip, waterLabel, type WaterStatus } from './waterStatus.ts';
 
 const base: WaterStatus = {
   state: 'ok', isLow: false, isPriming: false, source: 'firmware_flag', levelPercent: null,
@@ -27,4 +27,12 @@ test('unexpected firmware value surfaces, no sample stays quiet', () => {
   assert.match(waterBanner({ ...base, state: 'unknown', rawValue: 'maybe' })!.text, /maybe/);
   assert.equal(waterBanner({ ...base, state: 'unknown', rawValue: null }), null);
   assert.equal(waterLabel({ ...base, state: 'unknown', rawValue: null }), 'Unknown');
+});
+
+test('settings chip mirrors the status label', () => {
+  assert.deepEqual(waterChip(base), { label: 'OK', color: 'success' });
+  assert.deepEqual(waterChip({ ...base, state: 'low', isLow: true, rawValue: 'false' }), { label: 'Low', color: 'warning' });
+  assert.deepEqual(waterChip({ ...base, state: 'unknown', rawValue: null }), { label: 'Unknown', color: 'default' });
+  assert.deepEqual(waterChip({ ...base, state: 'unknown', rawValue: 'maybe' }), { label: 'Unknown', color: 'default' });
+  assert.deepEqual(waterChip(undefined), { label: 'Unknown', color: 'default' });
 });

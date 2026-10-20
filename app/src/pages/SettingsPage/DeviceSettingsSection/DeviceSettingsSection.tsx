@@ -9,6 +9,7 @@ import DailyReboot from './DailyReboot.tsx';
 import LedBrightnessSlider from './LedBrightnessSlider.tsx';
 import { useSettings } from '@api/settings.ts';
 import DeviceInfo from './DeviceInfo.tsx';
+import WaterTankStatus from './WaterTankStatus.tsx';
 import ErrorBoundary from '@components/ErrorBoundary.tsx';
 
 
@@ -24,6 +25,9 @@ export default function DeviceSettingsSection({ updateSettings }: DeviceSettings
   return (
     <Section title="Device settings">
       <Box display='flex' flexDirection='column' gap={ 1 }>
+        <ErrorBoundary componentName='Water tank'>
+          <WaterTankStatus />
+        </ErrorBoundary>
         <TimeZoneSelector settings={ settings } updateSettings={ updateSettings }/>
         <TemperatureFormatSelector settings={ settings } updateSettings={ updateSettings }/>
         <DailyReboot settings={ settings } updateSettings={ updateSettings }/>
